@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spec-s5-instrument"
+version = "0.1.0"
+description = "Exposure Time Calculator for the Spec-S5 spectroscopic survey instrument"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    "scipy",
+    "matplotlib",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["spec_s5_instrument*"]
+
+[tool.setuptools.package-data]
+spec_s5_instrument = ["data/*.csv"]
