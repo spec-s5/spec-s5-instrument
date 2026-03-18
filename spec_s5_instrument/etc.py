@@ -28,8 +28,8 @@ def compute_snr(m, nexp, texp, fiber_diameter=107):
 
     Parameters
     ----------
-    m : float
-        Source AB magnitude.
+    m : float or array-like
+        Source AB magnitude(s).
     nexp : int
         Number of exposures.
     texp : float
@@ -44,7 +44,12 @@ def compute_snr(m, nexp, texp, fiber_diameter=107):
         ``snr_s5_lam``, ``snr_d_lam``, ``ph_s5_t``, ``ph_d_t``,
         ``snr_s5_t``, ``snr_d_t``, ``VRAD_ERR``,
         ``fiber_diameter``, ``abmag``, ``exptime``, ``nexp``.
+        For scalar ``m`` shapes are ``(L,)`` / ``(fine_L,)``; for array
+        ``m`` of length N shapes are ``(N, L)`` / ``(N, fine_L)``.
     """
+    scalar_input = np.ndim(m) == 0
+    m = np.atleast_1d(np.asarray(m, dtype=float))  # (N,)
+
     lam_t = np.array([360., 375., 400., 450., 500., 550.,
                       600., 650., 700., 750., 800., 850., 900., 980.]) * 10.0  # Å
 
@@ -72,49 +77,49 @@ def compute_snr(m, nexp, texp, fiber_diameter=107):
     d_d  = 3.797e2   # cm  (DESI)
     d_s5 = 6.0e2     # cm  (Spec-S5)
 
-    # Sky spectrum (erg/s/cm²/Å/arcsec²)
+    # Sky spectrum (erg/s/cm²/Å/arcsec²) — magnitude-independent, shape (L,)
     flamsky = np.array([1.69e-17, 1.50e-17, 1.22e-17, 1.59e-17, 1.03e-17, 1.02e-17,
                         9.59e-18, 7.89e-18, 8.02e-18, 7.73e-18, 7.76e-18, 7.73e-18,
                         5.86e-18, 8.00e-18])
     phsky = flamsky / (_HPLANCK * _CLIGHT * 1e8 / lam_t)   # photons/s/cm²/Å/arcsec²
-
-    # Source: AB mag → photon flux
-    fnu  = 10 ** (-0.4 * (m + 48.6)) * np.ones_like(lam_t)
-    flam = fnu * (_CLIGHT * 1e8) / lam_t**2
-    phot = flam / (_HPLANCK * _CLIGHT * 1e8 / lam_t)
 
     noise_ccd_d  = np.array([3.35] * 6 + [2.72] * 8)
     noise_ccd_s5 = np.array([1.18] * 6 + [2.72] * 8)
 
     pi = np.pi
 
-    # DESI
-    ph_d    = phot  * pi * (d_d  / 2) ** 2 * texp * thru_d
+    # Source: AB mag → photon flux — broadcast m (N,1) against lam_t (L,) → (N, L)
+    fnu  = 10 ** (-0.4 * (m[:, None] + 48.6))              # (N, 1)
+    flam = fnu * (_CLIGHT * 1e8) / lam_t**2                 # (N, L)
+    phot = flam / (_HPLANCK * _CLIGHT * 1e8 / lam_t)        # (N, L)
+
+    # DESI — noise (L,) broadcasts against phot (N, L)
+    ph_d    = phot  * pi * (d_d  / 2) ** 2 * texp * thru_d  # (N, L)
     phsky_d = phsky * pi * (d_d  / 2) ** 2 * texp * pi * (df_d  / 2) ** 2 * thru_d_sky
-    noise_d = np.sqrt(phsky_d  + nexp * noise_ccd_d  ** 2)
-    snr_d   = ph_d  / noise_d
+    noise_d = np.sqrt(phsky_d  + nexp * noise_ccd_d  ** 2)  # (L,)
+    snr_d   = ph_d  / noise_d                                # (N, L)
 
     # Spec-S5
-    ph_s5    = phot  * pi * (d_s5 / 2) ** 2 * texp * thru_s5
+    ph_s5    = phot  * pi * (d_s5 / 2) ** 2 * texp * thru_s5  # (N, L)
     phsky_s5 = phsky * pi * (d_s5 / 2) ** 2 * texp * pi * (df_s5 / 2) ** 2 * thru_s5_sky
-    noise_s5 = np.sqrt(phsky_s5 + nexp * noise_ccd_s5 ** 2)
-    snr_s5   = ph_s5 / noise_s5
+    noise_s5 = np.sqrt(phsky_s5 + nexp * noise_ccd_s5 ** 2)   # (L,)
+    snr_s5   = ph_s5 / noise_s5                                # (N, L)
 
     # Fine wavelength grid
     lam = np.linspace(lam_t.min(), lam_t.max(), 1001)
 
-    # Velocity error from Spec-S5 z-arm (7470–9800 Å)
-    i_z = (lam_t > 7470.) & (lam_t < 9800.)
-    VRAD_ERR = 10.0 ** (1.389 - 0.975 * np.log10(np.median(snr_s5[i_z]))
+    # Velocity error from Spec-S5 z-arm (7470–9800 Å) — shape (N,)
+    i_z      = (lam_t > 7470.) & (lam_t < 9800.)
+    VRAD_ERR = 10.0 ** (1.389 - 0.975 * np.log10(np.median(snr_s5[:, i_z], axis=1))
                         - 0.975 * np.log10(0.8))
 
-    return {
+    result = {
         "lam":            lam,
         "lam_t":          lam_t,
-        "ph_s5_lam":      interp1d(lam_t, ph_s5,  kind='cubic')(lam),
-        "ph_d_lam":       interp1d(lam_t, ph_d,   kind='cubic')(lam),
-        "snr_s5_lam":     interp1d(lam_t, snr_s5, kind='cubic')(lam),
-        "snr_d_lam":      interp1d(lam_t, snr_d,  kind='cubic')(lam),
+        "ph_s5_lam":      interp1d(lam_t, ph_s5,  kind='cubic', axis=1)(lam),
+        "ph_d_lam":       interp1d(lam_t, ph_d,   kind='cubic', axis=1)(lam),
+        "snr_s5_lam":     interp1d(lam_t, snr_s5, kind='cubic', axis=1)(lam),
+        "snr_d_lam":      interp1d(lam_t, snr_d,  kind='cubic', axis=1)(lam),
         "ph_s5_t":        ph_s5,
         "ph_d_t":         ph_d,
         "snr_s5_t":       snr_s5,
@@ -125,6 +130,13 @@ def compute_snr(m, nexp, texp, fiber_diameter=107):
         "exptime":        texp,
         "nexp":           nexp,
     }
+
+    if scalar_input:
+        for key in ("ph_s5_lam", "ph_d_lam", "snr_s5_lam", "snr_d_lam",
+                    "ph_s5_t", "ph_d_t", "snr_s5_t", "snr_d_t", "VRAD_ERR", "abmag"):
+            result[key] = result[key][0]
+
+    return result
 
 
 def plot_snr_comparison(result_dict):
