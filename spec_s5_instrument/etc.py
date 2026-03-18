@@ -196,12 +196,12 @@ def compute_measurement_errors(magnitude, texp=3600.0, nexp=3,
                                 fiber_diameter=107, pm_model='gaia_dr5',
                                 star_type='giant'):
     """
-    Compute measurement errors for a star observed with Spec-S5.
+    Compute measurement errors for stars observed with Spec-S5.
 
     Parameters
     ----------
-    magnitude : float
-        AB magnitude of the star.
+    magnitude : float or array-like
+        AB magnitude(s) of the star(s).
     texp : float
         Total exposure time in seconds (default: 3600 s).
     nexp : int
@@ -222,16 +222,19 @@ def compute_measurement_errors(magnitude, texp=3600.0, nexp=3,
         ``snr_median_zarm`` : median SNR in Spec-S5 z-arm (7470–9800 Å)
         plus echoed inputs: ``pm_model``, ``star_type``, ``magnitude``,
         ``texp``, ``nexp``.
+        Scalar input returns scalar values; array input returns arrays.
     """
-    # 1. SNR
-    result          = compute_snr(m=magnitude, nexp=nexp, texp=texp, fiber_diameter=fiber_diameter)
-    vrad_err        = result['VRAD_ERR']
-    lam_t           = result['lam_t']
-    snr_s5_t        = result['snr_s5_t']
-    i_z             = (lam_t > 7470.) & (lam_t < 9800.)
-    snr_median_zarm = float(np.median(snr_s5_t[i_z]))
+    scalar_input = np.ndim(magnitude) == 0
+    mags = np.atleast_1d(np.asarray(magnitude, dtype=float))  # (N,)
 
-    # 2. Proper-motion error
+    # 1. SNR — single vectorised call over all magnitudes
+    snr_result      = compute_snr(m=mags, nexp=nexp, texp=texp, fiber_diameter=fiber_diameter)
+    lam_t           = snr_result['lam_t']
+    i_z             = (lam_t > 7470.) & (lam_t < 9800.)
+    snr_median_zarm = np.median(snr_result['snr_s5_t'][:, i_z], axis=1)  # (N,)
+    vrad_err        = snr_result['VRAD_ERR']                               # (N,)
+
+    # 2. Proper-motion error — interpolator built once, evaluated on all mags
     pm_file_map = {
         'gaia_dr5': 'GAIA_DR5.csv',
         'lsst1':    'LSST1_DECAM.csv',
@@ -240,18 +243,18 @@ def compute_measurement_errors(magnitude, texp=3600.0, nexp=3,
     if pm_model not in pm_file_map:
         raise ValueError(f"pm_model must be one of {list(pm_file_map.keys())}")
 
-    pm_data = np.loadtxt(_DATA_DIR / pm_file_map[pm_model], delimiter=',')
-    pm_mags, pm_errs = pm_data[:, 0], pm_data[:, 1]
-
-    if not (pm_mags.min() <= magnitude <= pm_mags.max()):
+    pm_data          = np.loadtxt(_DATA_DIR / pm_file_map[pm_model], delimiter=',')
+    pm_mags_data, pm_errs_data = pm_data[:, 0], pm_data[:, 1]
+    out_of_range = (mags < pm_mags_data.min()) | (mags > pm_mags_data.max())
+    if out_of_range.any():
         warnings.warn(
-            f"magnitude {magnitude} is outside the {pm_model} data range "
-            f"[{pm_mags.min():.2f}, {pm_mags.max():.2f}]. Extrapolating."
+            f"{out_of_range.sum()} magnitude(s) outside the {pm_model} data range "
+            f"[{pm_mags_data.min():.2f}, {pm_mags_data.max():.2f}]. Extrapolating."
         )
-    pm_err = float(interp1d(pm_mags, pm_errs, kind='cubic',
-                             bounds_error=False, fill_value='extrapolate')(magnitude))
+    pm_err = interp1d(pm_mags_data, pm_errs_data, kind='cubic',
+                      bounds_error=False, fill_value='extrapolate')(mags)   # (N,)
 
-    # 3. Fractional distance error
+    # 3. Fractional distance error — interpolator built once, evaluated on all SNRs
     dist_file_map = {
         'giant': 'dist_err_vs_snr_giant.csv',
         'dwarf': 'dist_err_vs_snr_dwarf.csv',
@@ -260,19 +263,23 @@ def compute_measurement_errors(magnitude, texp=3600.0, nexp=3,
         raise ValueError("star_type must be 'giant' or 'dwarf'")
 
     dist_data     = np.loadtxt(_DATA_DIR / dist_file_map[star_type], delimiter=',', comments='#')
-    dist_snr      = dist_data[:, 0]
-    dist_fracs    = dist_data[:, 1]
-    dist_err_frac = float(interp1d(dist_snr, dist_fracs, kind='cubic',
-                                    bounds_error=False, fill_value='extrapolate')(snr_median_zarm))
+    dist_err_frac = interp1d(dist_data[:, 0], dist_data[:, 1], kind='cubic',
+                             bounds_error=False, fill_value='extrapolate')(snr_median_zarm)  # (N,)
 
-    return {
+    result = {
         'vrad_err':        vrad_err,
         'pm_err':          pm_err,
         'dist_err_frac':   dist_err_frac,
         'snr_median_zarm': snr_median_zarm,
         'pm_model':        pm_model,
         'star_type':       star_type,
-        'magnitude':       magnitude,
+        'magnitude':       mags,
         'texp':            texp,
         'nexp':            nexp,
     }
+
+    if scalar_input:
+        for key in ('vrad_err', 'pm_err', 'dist_err_frac', 'snr_median_zarm', 'magnitude'):
+            result[key] = result[key][0]
+
+    return result
