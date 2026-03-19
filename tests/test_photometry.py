@@ -147,24 +147,24 @@ def test_lsst_z_to_gaia_g_out_of_range_warns():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("G, release, expected", [
-    (15.0, 'gaia_dr5', 0.004197),
-    (18.0, 'gaia_dr5', 0.020251),
-    (20.0, 'gaia_dr5', 0.087718),
-    (22.0, 'gaia_dr5', 0.502024),
-    (15.0, 'gaia_dr4', 0.011930),
-    (18.0, 'gaia_dr4', 0.057562),
-    (20.0, 'gaia_dr4', 0.249339),
-    (22.0, 'gaia_dr4', 1.427006),
+    (15.0,  'gaia_dr5', 0.004197),
+    (18.0,  'gaia_dr5', 0.020251),
+    (20.0,  'gaia_dr5', 0.087718),
+    (20.7,  'gaia_dr5', 0.158557),
+    (15.0,  'gaia_dr4', 0.011930),
+    (18.0,  'gaia_dr4', 0.057562),
+    (20.0,  'gaia_dr4', 0.249339),
+    (20.7,  'gaia_dr4', 0.450698),
 ])
 def test_gaia_pm_err_values(G, release, expected):
     assert gaia_pm_err(G, release) == pytest.approx(expected, rel=1e-4)
 
 
 def test_gaia_pm_err_array():
-    G = np.array([18.0, 20.0, 22.0])
+    G = np.array([18.0, 20.0, 20.7])
     result = gaia_pm_err(G, 'gaia_dr5')
     assert result.shape == (3,)
-    np.testing.assert_allclose(result, [0.020251, 0.087718, 0.502024], rtol=1e-4)
+    np.testing.assert_allclose(result, [0.020251, 0.087718, 0.158557], rtol=1e-4)
 
 
 def test_gaia_pm_err_bright_floor():
@@ -175,8 +175,8 @@ def test_gaia_pm_err_bright_floor():
 
 
 def test_gaia_pm_err_dr4_larger_than_dr5():
-    # DR4 has larger errors than DR5 at all magnitudes
-    G = np.array([15.0, 18.0, 20.0, 22.0])
+    # DR4 has larger errors than DR5 at all valid magnitudes
+    G = np.array([15.0, 18.0, 20.0, 20.7])
     assert np.all(gaia_pm_err(G, 'gaia_dr4') > gaia_pm_err(G, 'gaia_dr5'))
 
 
@@ -185,6 +185,20 @@ def test_gaia_pm_err_ratio():
     expected_ratio = (0.54 * 0.749) / (0.27 * 0.527)
     ratio = gaia_pm_err(20.0, 'gaia_dr4') / gaia_pm_err(20.0, 'gaia_dr5')
     assert ratio == pytest.approx(expected_ratio, rel=1e-6)
+
+
+def test_gaia_pm_err_faint_limit():
+    # G > 20.7 is outside the Gaia catalogue limit — should return NaN
+    assert np.isnan(gaia_pm_err(21.0, 'gaia_dr5'))
+    assert np.isnan(gaia_pm_err(20.8, 'gaia_dr4'))
+
+
+def test_gaia_pm_err_faint_limit_array():
+    G = np.array([20.0, 20.7, 21.0, 22.0])
+    result = gaia_pm_err(G, 'gaia_dr5')
+    assert not np.isnan(result[0])
+    assert not np.isnan(result[1])   # exactly 20.7 is still valid
+    assert np.all(np.isnan(result[2:]))
 
 
 def test_gaia_pm_err_invalid_release():

@@ -166,7 +166,9 @@ def gaia_pm_err(G, release='gaia_dr5'):
     sigma_plx = tfactor * np.sqrt(40.0 + 800.0 * z + 30.0 * z ** 2)   # μas
     sigma_pm  = pm_scale * sigma_plx                                    # μas/yr
 
-    return sigma_pm * 1e-3   # → mas/yr
+    result = sigma_pm * 1e-3   # → mas/yr
+    result = np.where(G > 20.7, np.nan, result)
+    return result
 
 
 # Assumed i-z colour for metal-poor Milky Way halo RGB stars ([Fe/H] ~ -2 to -1).
