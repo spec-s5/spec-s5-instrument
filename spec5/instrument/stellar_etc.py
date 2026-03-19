@@ -14,6 +14,8 @@ from pathlib import Path
 import numpy as np
 from scipy.interpolate import interp1d
 
+from .photometry import gaia_g_to_lsst_i, gaia_g_to_lsst_z, lsst_z_to_gaia_g, lsst_z_to_lsst_i
+
 # Physical constants
 _HPLANCK = 6.62607015e-27   # erg·s
 _CLIGHT  = 2.99792458e10    # cm/s
@@ -194,14 +196,15 @@ def plot_snr_comparison(result_dict):
 
 def compute_measurement_errors(magnitude, texp=3600.0, nexp=3,
                                 fiber_diameter=107, pm_model='gaia_dr5',
-                                star_type='giant'):
+                                star_type='giant', mag_band='lsst_z',
+                                bp_rp=None):
     """
     Compute measurement errors for stars observed with Spec-S5.
 
     Parameters
     ----------
     magnitude : float or array-like
-        AB magnitude(s) of the star(s).
+        Magnitude(s) of the star(s) in the band specified by ``mag_band``.
     texp : float
         Total exposure time in seconds (default: 3600 s).
     nexp : int
@@ -212,6 +215,11 @@ def compute_measurement_errors(magnitude, texp=3600.0, nexp=3,
         Proper-motion reference catalog (default: 'gaia_dr5').
     star_type : {'giant', 'dwarf'}
         Stellar type for distance error (giant: log g < 3.8; default: 'giant').
+    mag_band : {'lsst_z', 'gaia_g'}
+        Photometric band of ``magnitude`` (default: 'lsst_z').
+    bp_rp : float or array-like, optional
+        Gaia BP-RP colour(s), used when ``mag_band='gaia_g'``.
+        Defaults to 1.2 for giants and 0.8 for dwarfs.
 
     Returns
     -------
@@ -225,10 +233,26 @@ def compute_measurement_errors(magnitude, texp=3600.0, nexp=3,
         Scalar input returns scalar values; array input returns arrays.
     """
     scalar_input = np.ndim(magnitude) == 0
-    mags = np.atleast_1d(np.asarray(magnitude, dtype=float))  # (N,)
+    input_mags = np.atleast_1d(np.asarray(magnitude, dtype=float))  # (N,)
+
+    # Convert input to all required bands explicitly
+    if mag_band == 'gaia_g':
+        if bp_rp is None:
+            bp_rp = 1.2 if star_type == 'giant' else 0.8
+        gaia_g_mags = input_mags
+        lsst_z_mags = gaia_g_to_lsst_z(input_mags, bp_rp)
+        lsst_i_mags = gaia_g_to_lsst_i(input_mags, bp_rp)
+    elif mag_band == 'lsst_z':
+        if bp_rp is None:
+            bp_rp = 1.2 if star_type == 'giant' else 0.8
+        gaia_g_mags = lsst_z_to_gaia_g(input_mags, bp_rp)
+        lsst_z_mags = input_mags
+        lsst_i_mags = lsst_z_to_lsst_i(input_mags)
+    else:
+        raise ValueError("mag_band must be 'lsst_z' or 'gaia_g'")
 
     # 1. SNR — single vectorised call over all magnitudes
-    snr_result      = compute_snr(m=mags, nexp=nexp, texp=texp, fiber_diameter=fiber_diameter)
+    snr_result      = compute_snr(m=lsst_z_mags, nexp=nexp, texp=texp, fiber_diameter=fiber_diameter)
     lam_t           = snr_result['lam_t']
     i_z             = (lam_t > 7470.) & (lam_t < 9800.)
     snr_median_zarm = np.median(snr_result['snr_s5_t'][:, i_z], axis=1)  # (N,)
@@ -243,16 +267,20 @@ def compute_measurement_errors(magnitude, texp=3600.0, nexp=3,
     if pm_model not in pm_file_map:
         raise ValueError(f"pm_model must be one of {list(pm_file_map.keys())}")
 
-    pm_data          = np.loadtxt(_DATA_DIR / pm_file_map[pm_model], delimiter=',')
+    pm_data          = np.loadtxt(_DATA_DIR / pm_file_map[pm_model], delimiter=',', skiprows=1)
     pm_mags_data, pm_errs_data = pm_data[:, 0], pm_data[:, 1]
-    out_of_range = (mags < pm_mags_data.min()) | (mags > pm_mags_data.max())
+    if pm_model in ('lsst1', 'lsst10'):
+        pm_lookup_mags = lsst_i_mags
+    else:
+        pm_lookup_mags = gaia_g_mags
+    out_of_range = (pm_lookup_mags < pm_mags_data.min()) | (pm_lookup_mags > pm_mags_data.max())
     if out_of_range.any():
         warnings.warn(
             f"{out_of_range.sum()} magnitude(s) outside the {pm_model} data range "
             f"[{pm_mags_data.min():.2f}, {pm_mags_data.max():.2f}]. Extrapolating."
         )
     pm_err = interp1d(pm_mags_data, pm_errs_data, kind='cubic',
-                      bounds_error=False, fill_value='extrapolate')(mags)   # (N,)
+                      bounds_error=False, fill_value='extrapolate')(pm_lookup_mags)  # (N,)
 
     # 3. Fractional distance error — interpolator built once, evaluated on all SNRs
     dist_file_map = {
@@ -273,7 +301,7 @@ def compute_measurement_errors(magnitude, texp=3600.0, nexp=3,
         'snr_median_zarm': snr_median_zarm,
         'pm_model':        pm_model,
         'star_type':       star_type,
-        'magnitude':       mags,
+        'magnitude':       input_mags,
         'texp':            texp,
         'nexp':            nexp,
     }
