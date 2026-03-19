@@ -15,7 +15,7 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["spec_s5_instrument*"]
+include = ["spec5*"]
 
 [tool.setuptools.package-data]
-spec_s5_instrument = ["data/*.csv"]
+"spec5.instrument" = ["data/*.csv"]

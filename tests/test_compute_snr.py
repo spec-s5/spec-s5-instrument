@@ -1,11 +1,11 @@
 """
-Unit tests for spec_s5_instrument.stellar_etc.compute_snr.
+Unit tests for spec5.instrument.stellar_etc.compute_snr.
 """
 
 import numpy as np
 import pytest
 
-from spec_s5_instrument.stellar_etc import compute_snr
+from spec5.instrument.stellar_etc import compute_snr
 
 MAGS = [19, 20, 21, 22, 23]
 
