@@ -197,7 +197,7 @@ def plot_snr_comparison(result_dict):
 def compute_measurement_errors(magnitude, texp=3600.0, nexp=3,
                                 fiber_diameter=107, pm_model='gaia_dr5',
                                 star_type='giant', mag_band='lsst_z',
-                                bp_rp=None):
+                                bp_rp=None, vrad_sys=0.6):
     """
     Compute measurement errors for stars observed with Spec-S5.
 
@@ -220,6 +220,9 @@ def compute_measurement_errors(magnitude, texp=3600.0, nexp=3,
     bp_rp : float or array-like, optional
         Gaia BP-RP colour(s), used when ``mag_band='gaia_g'``.
         Defaults to 1.2 for giants and 0.8 for dwarfs.
+    vrad_sys : float
+        Systematic radial velocity error floor in km/s, added in quadrature
+        with the statistical error (default: 0.6 km/s).
 
     Returns
     -------
@@ -256,7 +259,7 @@ def compute_measurement_errors(magnitude, texp=3600.0, nexp=3,
     lam_t           = snr_result['lam_t']
     i_z             = (lam_t > 7470.) & (lam_t < 9800.)
     snr_median_zarm = np.median(snr_result['snr_s5_t'][:, i_z], axis=1)  # (N,)
-    vrad_err        = snr_result['VRAD_ERR']                               # (N,)
+    vrad_err        = np.sqrt(snr_result['VRAD_ERR'] ** 2 + vrad_sys ** 2)  # (N,)
 
     # 2. Proper-motion error — interpolator built once, evaluated on all mags
     pm_file_map = {
@@ -291,8 +294,10 @@ def compute_measurement_errors(magnitude, texp=3600.0, nexp=3,
         raise ValueError("star_type must be 'giant' or 'dwarf'")
 
     dist_data     = np.loadtxt(_DATA_DIR / dist_file_map[star_type], delimiter=',', comments='#')
-    dist_err_frac = interp1d(dist_data[:, 0], dist_data[:, 1], kind='cubic',
-                             bounds_error=False, fill_value='extrapolate')(snr_median_zarm)  # (N,)
+    dist_snr, dist_fracs = dist_data[:, 0], dist_data[:, 1]
+    dist_err_frac = interp1d(dist_snr, dist_fracs, kind='cubic',
+                             bounds_error=False,
+                             fill_value=(dist_fracs[0], dist_fracs[-1]))(snr_median_zarm)  # (N,)
 
     result = {
         'vrad_err':        vrad_err,

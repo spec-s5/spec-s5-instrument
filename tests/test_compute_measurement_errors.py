@@ -13,11 +13,11 @@ MAGS = [19, 20, 21, 22, 23]
 # Expected values evaluated at texp=3600, nexp=3, fiber_diameter=107,
 # pm_model='gaia_dr5', star_type='giant'
 EXPECTED = {
-    19: dict(vrad_err=0.436025, pm_err=0.094604, dist_err_frac=0.164930, snr_median_zarm=77.849716),
-    20: dict(vrad_err=1.070315, pm_err=0.234424, dist_err_frac=0.403254, snr_median_zarm=30.992530),
-    21: dict(vrad_err=2.627312, pm_err=0.611509, dist_err_frac=0.554783, snr_median_zarm=12.338348),
-    22: dict(vrad_err=6.449286, pm_err=1.498308, dist_err_frac=0.623753, snr_median_zarm=4.911985),
-    23: dict(vrad_err=15.831121, pm_err=3.169641, dist_err_frac=0.652560, snr_median_zarm=1.955496),
+    19: dict(vrad_err=0.741699, pm_err=0.094604, dist_err_frac=0.164930, snr_median_zarm=77.849716),
+    20: dict(vrad_err=1.227018, pm_err=0.234424, dist_err_frac=0.403254, snr_median_zarm=30.992530),
+    21: dict(vrad_err=2.694952, pm_err=0.611509, dist_err_frac=0.554783, snr_median_zarm=12.338348),
+    22: dict(vrad_err=6.477136, pm_err=1.498308, dist_err_frac=0.623753, snr_median_zarm=4.911985),
+    23: dict(vrad_err=15.842487, pm_err=3.169641, dist_err_frac=0.631276, snr_median_zarm=1.955496),
 }
 
 
