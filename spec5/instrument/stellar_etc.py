@@ -278,8 +278,10 @@ def compute_measurement_errors(magnitude, texp=3600.0, nexp=3,
                 f"{out_of_range.sum()} magnitude(s) outside the {pm_model} data range "
                 f"[{pm_mags_data.min():.2f}, {pm_mags_data.max():.2f}]. Extrapolating."
             )
-        pm_err = interp1d(pm_mags_data, pm_errs_data, kind='cubic',
-                          bounds_error=False, fill_value='extrapolate')(lsst_i_mags)  # (N,)
+        # Clamp at bright end; extrapolate at faint end
+        pm_lookup = np.maximum(lsst_i_mags, pm_mags_data.min())
+        pm_err = interp1d(pm_mags_data, pm_errs_data, kind='linear',
+                          bounds_error=False, fill_value='extrapolate')(pm_lookup)  # (N,)
     else:
         raise ValueError(f"pm_model must be one of {list(_GAIA_ANALYTICAL) + list(_LSST_PM_FILES)}")
 
