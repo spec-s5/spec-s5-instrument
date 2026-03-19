@@ -116,6 +116,59 @@ def gaia_g_to_lsst_i(G, bp_rp):
     return G + 0.099 * bp_rp**2 - 0.672 * bp_rp + 0.343
 
 
+# ---------------------------------------------------------------------------
+# Gaia proper-motion error scaling relations
+# ---------------------------------------------------------------------------
+
+# From https://www.cosmos.esa.int/web/gaia/science-performance
+# σ_parallax [μas] = Tfactor * sqrt(40 + 800*z + 30*z²)
+#   z = max(10^(0.4*(13 - 15)), 10^(0.4*(G - 15)))  = max(0.1585, 10^(0.4*(G-15)))
+# σ_pm [μas/yr] = pm_scale * σ_parallax  (sky-averaged)
+_GAIA_PM_PARAMS = {
+    #            Tfactor   pm_scale
+    'gaia_dr4': (0.749,    0.54),
+    'gaia_dr5': (0.527,    0.27),
+}
+
+
+def gaia_pm_err(G, release='gaia_dr5'):
+    """
+    Compute Gaia sky-averaged proper motion uncertainty from the ESA
+    science-performance scaling relations.
+
+    Source: https://www.cosmos.esa.int/web/gaia/science-performance
+
+    The parallax uncertainty is:
+        σ_ϖ [μas] = Tfactor * sqrt(40 + 800*z + 30*z²)
+    where z = max(10^(0.4*(13-15)), 10^(0.4*(G-15))),
+    and the sky-averaged proper motion uncertainty is:
+        σ_μ [μas/yr] = pm_scale * σ_ϖ
+
+    Parameters
+    ----------
+    G : float or array-like
+        Gaia G magnitude(s).
+    release : {'gaia_dr4', 'gaia_dr5'}
+        Gaia data release (default: 'gaia_dr5').
+
+    Returns
+    -------
+    float or ndarray
+        Proper motion uncertainty in mas/yr.
+    """
+    if release not in _GAIA_PM_PARAMS:
+        raise ValueError(f"release must be one of {list(_GAIA_PM_PARAMS)}")
+
+    G = np.asarray(G, dtype=float)
+    tfactor, pm_scale = _GAIA_PM_PARAMS[release]
+
+    z = np.maximum(10 ** (-0.8), 10 ** (0.4 * (G - 15.0)))
+    sigma_plx = tfactor * np.sqrt(40.0 + 800.0 * z + 30.0 * z ** 2)   # μas
+    sigma_pm  = pm_scale * sigma_plx                                    # μas/yr
+
+    return sigma_pm * 1e-3   # → mas/yr
+
+
 # Assumed i-z colour for metal-poor Milky Way halo RGB stars ([Fe/H] ~ -2 to -1).
 # Both lsst_i_to_lsst_z and lsst_z_to_lsst_i reference this constant so they
 # are guaranteed to be exact inverses of each other.

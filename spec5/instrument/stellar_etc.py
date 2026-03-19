@@ -14,7 +14,8 @@ from pathlib import Path
 import numpy as np
 from scipy.interpolate import interp1d
 
-from .photometry import gaia_g_to_lsst_i, gaia_g_to_lsst_z, lsst_z_to_gaia_g, lsst_z_to_lsst_i
+from .photometry import (gaia_g_to_lsst_i, gaia_g_to_lsst_z, gaia_pm_err,
+                         lsst_z_to_gaia_g, lsst_z_to_lsst_i)
 
 # Physical constants
 _HPLANCK = 6.62607015e-27   # erg·s
@@ -261,29 +262,26 @@ def compute_measurement_errors(magnitude, texp=3600.0, nexp=3,
     snr_median_zarm = np.median(snr_result['snr_s5_t'][:, i_z], axis=1)  # (N,)
     vrad_err        = np.sqrt(snr_result['VRAD_ERR'] ** 2 + vrad_sys ** 2)  # (N,)
 
-    # 2. Proper-motion error — interpolator built once, evaluated on all mags
-    pm_file_map = {
-        'gaia_dr5': 'GAIA_DR5.csv',
-        'lsst1':    'LSST1_DECAM.csv',
-        'lsst10':   'LSST10_DECAM.csv',
-    }
-    if pm_model not in pm_file_map:
-        raise ValueError(f"pm_model must be one of {list(pm_file_map.keys())}")
+    # 2. Proper-motion error
+    _GAIA_ANALYTICAL = ('gaia_dr4', 'gaia_dr5')
+    _LSST_PM_FILES   = {'lsst1': 'LSST1_DECAM.csv', 'lsst10': 'LSST10_DECAM.csv'}
 
-    pm_data          = np.loadtxt(_DATA_DIR / pm_file_map[pm_model], delimiter=',', skiprows=1)
-    pm_mags_data, pm_errs_data = pm_data[:, 0], pm_data[:, 1]
-    if pm_model in ('lsst1', 'lsst10'):
-        pm_lookup_mags = lsst_i_mags
+    if pm_model in _GAIA_ANALYTICAL:
+        # Analytical scaling relations from ESA science-performance page
+        pm_err = gaia_pm_err(gaia_g_mags, release=pm_model)          # (N,)
+    elif pm_model in _LSST_PM_FILES:
+        pm_data = np.loadtxt(_DATA_DIR / _LSST_PM_FILES[pm_model], delimiter=',', skiprows=1)
+        pm_mags_data, pm_errs_data = pm_data[:, 0], pm_data[:, 1]
+        out_of_range = (lsst_i_mags < pm_mags_data.min()) | (lsst_i_mags > pm_mags_data.max())
+        if out_of_range.any():
+            warnings.warn(
+                f"{out_of_range.sum()} magnitude(s) outside the {pm_model} data range "
+                f"[{pm_mags_data.min():.2f}, {pm_mags_data.max():.2f}]. Extrapolating."
+            )
+        pm_err = interp1d(pm_mags_data, pm_errs_data, kind='cubic',
+                          bounds_error=False, fill_value='extrapolate')(lsst_i_mags)  # (N,)
     else:
-        pm_lookup_mags = gaia_g_mags
-    out_of_range = (pm_lookup_mags < pm_mags_data.min()) | (pm_lookup_mags > pm_mags_data.max())
-    if out_of_range.any():
-        warnings.warn(
-            f"{out_of_range.sum()} magnitude(s) outside the {pm_model} data range "
-            f"[{pm_mags_data.min():.2f}, {pm_mags_data.max():.2f}]. Extrapolating."
-        )
-    pm_err = interp1d(pm_mags_data, pm_errs_data, kind='cubic',
-                      bounds_error=False, fill_value='extrapolate')(pm_lookup_mags)  # (N,)
+        raise ValueError(f"pm_model must be one of {list(_GAIA_ANALYTICAL) + list(_LSST_PM_FILES)}")
 
     # 3. Fractional distance error — interpolator built once, evaluated on all SNRs
     dist_file_map = {

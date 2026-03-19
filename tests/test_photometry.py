@@ -10,6 +10,7 @@ import pytest
 from spec5.instrument.photometry import (
     gaia_g_to_lsst_i,
     gaia_g_to_lsst_z,
+    gaia_pm_err,
     lsst_i_to_lsst_z,
     lsst_z_to_gaia_g,
 )
@@ -139,3 +140,53 @@ def test_lsst_z_to_gaia_g_array():
 def test_lsst_z_to_gaia_g_out_of_range_warns():
     with pytest.warns(UserWarning, match="BP-RP"):
         lsst_z_to_gaia_g(18.0, bp_rp=4.0)
+
+
+# ---------------------------------------------------------------------------
+# gaia_pm_err
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("G, release, expected", [
+    (15.0, 'gaia_dr5', 0.004197),
+    (18.0, 'gaia_dr5', 0.020251),
+    (20.0, 'gaia_dr5', 0.087718),
+    (22.0, 'gaia_dr5', 0.502024),
+    (15.0, 'gaia_dr4', 0.011930),
+    (18.0, 'gaia_dr4', 0.057562),
+    (20.0, 'gaia_dr4', 0.249339),
+    (22.0, 'gaia_dr4', 1.427006),
+])
+def test_gaia_pm_err_values(G, release, expected):
+    assert gaia_pm_err(G, release) == pytest.approx(expected, rel=1e-4)
+
+
+def test_gaia_pm_err_array():
+    G = np.array([18.0, 20.0, 22.0])
+    result = gaia_pm_err(G, 'gaia_dr5')
+    assert result.shape == (3,)
+    np.testing.assert_allclose(result, [0.020251, 0.087718, 0.502024], rtol=1e-4)
+
+
+def test_gaia_pm_err_bright_floor():
+    # G <= 13 hits the floor: z = 10^(-0.8) regardless of G
+    err_13 = gaia_pm_err(13.0, 'gaia_dr5')
+    err_10 = gaia_pm_err(10.0, 'gaia_dr5')
+    assert err_13 == pytest.approx(err_10, rel=1e-10)
+
+
+def test_gaia_pm_err_dr4_larger_than_dr5():
+    # DR4 has larger errors than DR5 at all magnitudes
+    G = np.array([15.0, 18.0, 20.0, 22.0])
+    assert np.all(gaia_pm_err(G, 'gaia_dr4') > gaia_pm_err(G, 'gaia_dr5'))
+
+
+def test_gaia_pm_err_ratio():
+    # Ratio DR4/DR5 is (0.54 * 0.749) / (0.27 * 0.527) = constant
+    expected_ratio = (0.54 * 0.749) / (0.27 * 0.527)
+    ratio = gaia_pm_err(20.0, 'gaia_dr4') / gaia_pm_err(20.0, 'gaia_dr5')
+    assert ratio == pytest.approx(expected_ratio, rel=1e-6)
+
+
+def test_gaia_pm_err_invalid_release():
+    with pytest.raises(ValueError):
+        gaia_pm_err(20.0, 'gaia_dr3')
