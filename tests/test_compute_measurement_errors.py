@@ -1,12 +1,12 @@
 """
-Unit tests for spec_s5_instrument.etc.compute_measurement_errors.
+Unit tests for spec_s5_instrument.stellar_etc.compute_measurement_errors.
 """
 
 import warnings
 
 import pytest
 
-from spec_s5_instrument.etc import compute_measurement_errors
+from spec_s5_instrument.stellar_etc import compute_measurement_errors
 
 MAGS = [19, 20, 21, 22, 23]
 
