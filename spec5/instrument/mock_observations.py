@@ -5,6 +5,7 @@ Functions
 ---------
 galactocentric_to_observed  : Galactocentric phase-space + luminosity → on-sky observables
 observe_with_spec5           : On-sky observables → mock Spec-S5 measurements with noise
+observe_with_desi            : On-sky observables → mock DESI MWS measurements with noise
 """
 
 import numpy as np
@@ -295,6 +296,168 @@ def observe_with_spec5(stars, star_type='giant', pm_model='gaia_dr5',
         pm_err[valid]        = errs['pm_err']
         dist_err_frac[valid] = errs['dist_err_frac']
         snr[valid]           = errs['snr_median_zarm']
+
+    # Draw noisy observations (NaN errors propagate to NaN observations)
+    vrad_obs     = vrad     + rng.normal(0.0, 1.0, n) * vrad_err
+    pmra_obs     = pmra     + rng.normal(0.0, 1.0, n) * pm_err
+    pmdec_obs    = pmdec    + rng.normal(0.0, 1.0, n) * pm_err
+    distance_obs = distance * (1.0 + rng.normal(0.0, 1.0, n) * dist_err_frac)
+
+    if is_dataframe:
+        import pandas as pd
+        return pd.DataFrame({
+            'vrad_obs':        vrad_obs,
+            'pmra_obs':        pmra_obs,
+            'pmdec_obs':       pmdec_obs,
+            'distance_obs':    distance_obs,
+            'vrad_err':        vrad_err,
+            'pm_err':          pm_err,
+            'dist_err_frac':   dist_err_frac,
+            'snr_median_zarm': snr,
+        })
+    else:
+        out = np.empty(n, dtype=[
+            ('vrad_obs',        'f8'),
+            ('pmra_obs',        'f8'),
+            ('pmdec_obs',       'f8'),
+            ('distance_obs',    'f8'),
+            ('vrad_err',        'f8'),
+            ('pm_err',          'f8'),
+            ('dist_err_frac',   'f8'),
+            ('snr_median_zarm', 'f8'),
+        ])
+        out['vrad_obs']        = vrad_obs
+        out['pmra_obs']        = pmra_obs
+        out['pmdec_obs']       = pmdec_obs
+        out['distance_obs']    = distance_obs
+        out['vrad_err']        = vrad_err
+        out['pm_err']          = pm_err
+        out['dist_err_frac']   = dist_err_frac
+        out['snr_median_zarm'] = snr
+        return out
+
+
+# ---------------------------------------------------------------------------
+# DESI instrument constants (relative to Spec-S5)
+# ---------------------------------------------------------------------------
+# DESI uses a 4-m Mayall mirror; Spec-S5 uses a 6-m mirror.
+# Collecting area ratio: (4/6)^2 = 4/9
+# Equivalent magnitude offset: -2.5 * log10(4/9) = +0.876 mag
+# i.e. DESI sees each star as if it were ~0.88 mag fainter than Spec-S5 would.
+_DESI_MIRROR_MAG_OFFSET = 2.5 * np.log10((6 / 4) ** 2)   # ~0.876 mag
+
+# DESI RV systematic floor (Koposov et al. 2024, EDR MWS VAC)
+_DESI_RV_SYS_DEFAULT = 0.9   # km/s
+
+
+def observe_with_desi(stars, star_type='giant', pm_model='gaia_dr5',
+                      texp=3000.0, nexp=3, fiber_diameter=107,
+                      vrad_sys=_DESI_RV_SYS_DEFAULT, seed=None):
+    """
+    Generate mock DESI MWS observations for the same stellar catalogue.
+
+    Mirrors the call signature of ``observe_with_spec5`` exactly.  The key
+    difference is that DESI uses a 4-m Mayall mirror (vs. 6-m for Spec-S5),
+    which is modelled as an effective magnitude offset of +0.876 mag applied
+    to ``lsst_z`` before passing to ``compute_measurement_errors``.  DESI also
+    uses shorter default exposures (3 × 1000 s vs. 3 × 1200 s) and a higher
+    default RV systematic floor (0.9 km/s, from Koposov et al. 2024).
+
+    Parameters
+    ----------
+    stars : numpy structured array or pandas DataFrame
+        Must contain columns/fields:
+            ``vrad``    — true heliocentric radial velocity [km/s]
+            ``pmra``    — true proper motion in RA × cos(dec) [mas/yr]
+            ``pmdec``   — true proper motion in Dec [mas/yr]
+            ``distance``— true heliocentric distance [kpc]
+            ``lsst_z``  — apparent LSST z magnitude (NaN → all outputs NaN)
+    star_type : {'giant', 'dwarf'}
+        Stellar population type.
+    pm_model : {'gaia_dr4', 'gaia_dr5', 'lsst1', 'lsst10'}
+        Proper-motion reference catalogue (default: 'gaia_dr5').
+    texp : float
+        Total exposure time in seconds (default: 3000 s = 3 × 1000 s).
+    nexp : int
+        Number of sub-exposures (default: 3).
+    fiber_diameter : {107, 120}
+        Fiber diameter in microns (default: 107, same as Spec-S5).
+    vrad_sys : float
+        Systematic RV floor in km/s, added in quadrature
+        (default: 0.9 km/s, Koposov et al. 2024 EDR MWS VAC).
+    seed : int or None
+        Random seed for reproducibility.
+
+    Returns
+    -------
+    numpy structured array or pandas DataFrame
+        Same type and columns as ``observe_with_spec5``:
+            ``vrad_obs``, ``pmra_obs``, ``pmdec_obs``, ``distance_obs``,
+            ``vrad_err``, ``pm_err``, ``dist_err_frac``, ``snr_median_zarm``.
+
+    Notes
+    -----
+    The DESI mirror-size penalty is applied by shifting ``lsst_z`` by
+    ``_DESI_MIRROR_MAG_OFFSET`` (~0.876 mag) when computing spectroscopic
+    errors (``vrad_err``, ``dist_err_frac``, ``snr_median_zarm``).  Proper
+    motion errors are derived from Gaia, which observes independently of the
+    spectrograph, so ``pm_err`` is computed from the unshifted ``lsst_z``
+    — identical to ``observe_with_spec5``.  The higher default ``vrad_sys``
+    reflects the empirical DESI EDR systematic floor.
+    """
+    # Detect input type
+    try:
+        import pandas as pd
+        is_dataframe = isinstance(stars, pd.DataFrame)
+    except ImportError:
+        is_dataframe = False
+
+    vrad     = np.asarray(stars['vrad'],     dtype=float)
+    pmra     = np.asarray(stars['pmra'],     dtype=float)
+    pmdec    = np.asarray(stars['pmdec'],    dtype=float)
+    distance = np.asarray(stars['distance'], dtype=float)
+    lsst_z   = np.asarray(stars['lsst_z'],  dtype=float)
+
+    n   = len(vrad)
+    rng = np.random.default_rng(seed)
+
+    # Apply DESI mirror penalty to spectroscopic quantities only.
+    # Proper motion errors come from Gaia, which is independent of the
+    # spectrograph aperture, so pm_err uses the unshifted lsst_z.
+    lsst_z_desi = lsst_z + _DESI_MIRROR_MAG_OFFSET
+
+    valid_spec = np.isfinite(lsst_z_desi)  # for vrad/dist/snr
+    valid_pm   = np.isfinite(lsst_z)       # for pm_err (same Gaia cut as Spec-S5)
+
+    vrad_err      = np.full(n, np.nan)
+    pm_err        = np.full(n, np.nan)
+    dist_err_frac = np.full(n, np.nan)
+    snr           = np.full(n, np.nan)
+
+    import warnings
+    if valid_spec.any():
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            errs_spec = compute_measurement_errors(
+                lsst_z_desi[valid_spec],
+                texp=texp, nexp=nexp, fiber_diameter=fiber_diameter,
+                pm_model=pm_model, star_type=star_type,
+                vrad_sys=vrad_sys,
+            )
+        vrad_err[valid_spec]      = errs_spec['vrad_err']
+        dist_err_frac[valid_spec] = errs_spec['dist_err_frac']
+        snr[valid_spec]           = errs_spec['snr_median_zarm']
+
+    if valid_pm.any():
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            errs_pm = compute_measurement_errors(
+                lsst_z[valid_pm],
+                texp=texp, nexp=nexp, fiber_diameter=fiber_diameter,
+                pm_model=pm_model, star_type=star_type,
+                vrad_sys=vrad_sys,
+            )
+        pm_err[valid_pm] = errs_pm['pm_err']
 
     # Draw noisy observations (NaN errors propagate to NaN observations)
     vrad_obs     = vrad     + rng.normal(0.0, 1.0, n) * vrad_err
