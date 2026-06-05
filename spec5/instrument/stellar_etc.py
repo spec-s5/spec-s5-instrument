@@ -99,13 +99,13 @@ def compute_snr(m, nexp, texp, fiber_diameter=107):
     # DESI — noise (L,) broadcasts against phot (N, L)
     ph_d    = phot  * pi * (d_d  / 2) ** 2 * texp * thru_d  # (N, L)
     phsky_d = phsky * pi * (d_d  / 2) ** 2 * texp * pi * (df_d  / 2) ** 2 * thru_d_sky
-    noise_d = np.sqrt(phsky_d  + nexp * noise_ccd_d  ** 2)  # (L,)
+    noise_d = np.sqrt(ph_d + phsky_d  + nexp * noise_ccd_d  ** 2)  # (N, L)
     snr_d   = ph_d  / noise_d                                # (N, L)
 
     # Spec-S5
     ph_s5    = phot  * pi * (d_s5 / 2) ** 2 * texp * thru_s5  # (N, L)
     phsky_s5 = phsky * pi * (d_s5 / 2) ** 2 * texp * pi * (df_s5 / 2) ** 2 * thru_s5_sky
-    noise_s5 = np.sqrt(phsky_s5 + nexp * noise_ccd_s5 ** 2)   # (L,)
+    noise_s5 = np.sqrt(ph_s5 + phsky_s5 + nexp * noise_ccd_s5 ** 2)   # (N, L)
     snr_s5   = ph_s5 / noise_s5                                # (N, L)
 
     # Fine wavelength grid
