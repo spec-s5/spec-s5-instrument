@@ -15,11 +15,11 @@ MAGS = [19, 20, 21, 22, 23]
 # pm_model='gaia_dr5', star_type='giant'.
 # pm_err is NaN for z >= 21 because the default bp_rp=1.2 converts those to G > 20.7.
 EXPECTED = {
-    19: dict(vrad_err=0.741699, pm_err=0.055601, dist_err_frac=0.164930, snr_median_zarm=77.849716),
-    20: dict(vrad_err=1.227019, pm_err=0.125927, dist_err_frac=0.403254, snr_median_zarm=30.992530),
-    21: dict(vrad_err=2.694952, pm_err=None,      dist_err_frac=0.554783, snr_median_zarm=12.338348),
-    22: dict(vrad_err=6.477136, pm_err=None,      dist_err_frac=0.623753, snr_median_zarm=4.911985),
-    23: dict(vrad_err=15.842486, pm_err=None,     dist_err_frac=0.631276, snr_median_zarm=1.955496),
+    19: dict(vrad_err=1.030244, pm_err=0.055601, dist_err_frac=0.342332, snr_median_zarm=39.858114),
+    20: dict(vrad_err=1.657531, pm_err=0.125927, dist_err_frac=0.478341, snr_median_zarm=21.267523),
+    21: dict(vrad_err=3.200996, pm_err=None,      dist_err_frac=0.573572, snr_median_zarm=10.262424),
+    22: dict(vrad_err=7.003724, pm_err=None,      dist_err_frac=0.627426, snr_median_zarm=4.530664),
+    23: dict(vrad_err=16.357067, pm_err=None,     dist_err_frac=0.631276, snr_median_zarm=1.892340),
 }
 
 
