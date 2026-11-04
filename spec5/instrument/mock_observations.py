@@ -506,8 +506,8 @@ def observe_with_desi(stars, star_type='giant', pm_model='gaia_dr5',
 # BGS mock redshift recovery
 # ---------------------------------------------------------------------------
 
-def _observe_bgs(galaxies, instrument, bgs_type, nexp, texp,
-                  fiber_diameter, sersic_n, seed):
+def _observe_bgs(galaxies, instrument, bgs_type, nexp, texp, sersic_n, seed,
+                 **spec5_kwargs):
     try:
         import pandas as pd
         is_dataframe = isinstance(galaxies, pd.DataFrame)
@@ -526,8 +526,8 @@ def _observe_bgs(galaxies, instrument, bgs_type, nexp, texp,
     if valid.any():
         success_prob[valid] = compute_redshift_success(
             r_fiber_mag[valid], instrument=instrument, bgs_type=bgs_type,
-            nexp=nexp, texp=texp, fiber_diameter=fiber_diameter,
-            half_light_radius=hlr[valid], sersic_n=sersic_n,
+            nexp=nexp, texp=texp, half_light_radius=hlr[valid],
+            sersic_n=sersic_n, **spec5_kwargs,
         )
 
     draw = rng.uniform(0.0, 1.0, n)
@@ -554,22 +554,22 @@ def _observe_bgs(galaxies, instrument, bgs_type, nexp, texp,
 
 
 def observe_bgs_with_spec5(galaxies, bgs_type='bright', nexp=1, texp=180.0,
-                            fiber_diameter=107, sersic_n=1.0, seed=None):
+                            fiber_diameter=107, sersic_n=1.0, seed=None,
+                            seeing_fwhm=1.1, sky_scale=1.0):
     """
     Generate mock Spec-S5 BGS redshift-recovery outcomes.
 
     Draws a Bernoulli success/failure outcome per galaxy from
     :func:`spec5.instrument.bgs_etc.compute_redshift_success`, following
-    DESI's own binary redshift-recovery definition (Hahn et al. 2023) —
+    the Hahn et al. 2023 redshift-success criteria —
     there is no continuous redshift-error model (see docs/bgs_plan.md).
 
     Parameters
     ----------
     galaxies : numpy structured array or pandas DataFrame
         Must contain columns/fields:
-            ``r_fiber_mag``       — r-band AB magnitude in DESI's reference
-                                     1.51" fiber-flux convention (NaN → all
-                                     outputs NaN)
+            ``r_fiber_mag``       — r-band AB magnitude in the FIBERFLUX_R
+                                     convention (NaN → all outputs NaN)
             ``half_light_radius`` — galaxy half-light radius, arcsec
             ``redshift``          — true redshift
     bgs_type : {'bright'}
@@ -585,6 +585,9 @@ def observe_bgs_with_spec5(galaxies, bgs_type='bright', nexp=1, texp=180.0,
         Sersic index of the assumed light profile (default: 1.0).
     seed : int or None
         Random seed for reproducibility (default: None).
+    seeing_fwhm, sky_scale : float
+        Observing conditions; see :func:`spec5.instrument.bgs_etc.compute_bgs_snr`
+        (default: 1.1" seeing, tabulated dark sky).
 
     Returns
     -------
@@ -595,19 +598,19 @@ def observe_bgs_with_spec5(galaxies, bgs_type='bright', nexp=1, texp=180.0,
             ``success_prob`` — P(success) used to draw the outcome
     """
     return _observe_bgs(galaxies, instrument='spec5', bgs_type=bgs_type,
-                         nexp=nexp, texp=texp, fiber_diameter=fiber_diameter,
-                         sersic_n=sersic_n, seed=seed)
+                        nexp=nexp, texp=texp, sersic_n=sersic_n, seed=seed,
+                        fiber_diameter=fiber_diameter, seeing_fwhm=seeing_fwhm,
+                        sky_scale=sky_scale)
 
 
 def observe_bgs_with_desi(galaxies, bgs_type='bright', nexp=1, texp=180.0,
-                           fiber_diameter=107, sersic_n=1.0, seed=None):
+                           sersic_n=1.0, seed=None):
     """
     Generate mock DESI BGS redshift-recovery outcomes.
 
-    Mirrors the call signature of ``observe_bgs_with_spec5`` exactly, using
-    ``instrument='desi'`` so ``compute_redshift_success`` evaluates the
-    DR1-calibrated curve directly rather than translating through the
-    Spec-S5 mirror/aperture SNR ratio.
+    Uses ``instrument='desi'``, so ``compute_redshift_success`` evaluates the
+    DR1-calibrated curve directly rather than translating through Spec-S5's
+    SNR. Takes no Spec-S5 fiber or observing-condition arguments.
 
     Parameters
     ----------
@@ -619,5 +622,4 @@ def observe_bgs_with_desi(galaxies, bgs_type='bright', nexp=1, texp=180.0,
         Same type and columns as ``observe_bgs_with_spec5``.
     """
     return _observe_bgs(galaxies, instrument='desi', bgs_type=bgs_type,
-                         nexp=nexp, texp=texp, fiber_diameter=fiber_diameter,
-                         sersic_n=sersic_n, seed=seed)
+                        nexp=nexp, texp=texp, sersic_n=sersic_n, seed=seed)

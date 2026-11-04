@@ -57,12 +57,13 @@ See `../../docs/bgs_path_b_results.md` for the full writeup. Short version:
    effect, not a spectroscopic SNR effect, and is out of scope for an SNR
    ETC.
 3. **Restricting to extended sources (`SHAPE_R > 1.0"`) recovers the clean,
-   physically expected relation**: success rate flat at ~98.4-98.8% from
-   r_fiber~17 to ~20.7, declining smoothly through the BGS Faint regime to
-   ~80% by r_fiber~22. This matches Hahn et al. 2023's qualitative
+   physically expected relation**: success rate flat at ~98.4-99.2% from
+   r_fiber~17 to ~20.7, declining through ~80% at r_fiber~22 to ~42% at 22.55,
+   then flattening near 0.4 out to the `r_fiber < 22.9` survey limit. This matches Hahn et al. 2023's qualitative
    description (>95% success for BGS Bright, declining gradually into BGS
    Faint) and is the curve carried forward into the `spec5` implementation.
 
 Fitted logistic `P(success | r_fiber_mag) = floor + (ceil-floor) / (1 +
-exp((m - x0)/k))` on the extended-source sample: `x0=21.89, k=0.184,
-floor=0.661, ceil=0.986` (see `logistic_fit_extended_rfibermag.txt`).
+exp((m - x0)/k))` on the extended-source sample: `x0=22.15, k=0.232,
+floor=0.360, ceil=0.987` (see `logistic_fit_extended_rfibermag.txt`). The
+package uses the binned table, not this fit.

@@ -101,8 +101,8 @@ range are clamped to the nearest boundary value.
 ```python
 from spec5.instrument.bgs_etc import compute_bgs_snr, compute_redshift_success
 
-# r-arm continuum SNR for a BGS galaxy (r_fiber_mag in DESI's reference
-# 1.51" fiber-flux convention), half_light_radius in arcsec
+# r-arm continuum SNR for a BGS galaxy (r_fiber_mag in the FIBERFLUX_R
+# convention: 1.5" fiber, 1" seeing), half_light_radius in arcsec
 snr = compute_bgs_snr(r_fiber_mag=19.5, nexp=1, texp=180.0, half_light_radius=1.5)
 print(snr['snr_r_s5'], snr['snr_r_d'])
 
@@ -112,7 +112,7 @@ p_desi  = compute_redshift_success(19.5, instrument='desi')
 ```
 
 Redshift recovery is modeled as a **binary** success/failure outcome,
-following DESI's own definition (Hahn et al. 2023; Guy et al. 2023):
+using the Hahn et al. 2023 criteria that don't need a deep comparison spectrum:
 `ZWARN==0 & DELTACHI2>40 & SPECTYPE=='GALAXY'`. There is no continuous
 redshift-error model — DESI's own pipeline doesn't publish one either, since
 Δχ² is a detection statistic, not a precision metric.
@@ -126,17 +126,18 @@ fit (without that restriction) is misleadingly non-monotonic. Only the
 **BGS Bright** class is currently calibrated (`bgs_type='faint'` raises
 `ValueError`; see `docs/bgs_plan.md`).
 
-For extended sources, only a fraction of the galaxy's light falls within the
-fiber. This is modeled with a Sersic light profile and the standard
-curve-of-growth formula (`spec5.instrument.galaxy_photometry.fiber_capture_fraction`),
-by default an exponential disk (`sersic_n=1.0`, typical of star-forming BGS
-targets). Predicting Spec-S5's redshift-success probability
-(`instrument='spec5'`) translates the input magnitude through the actual
-computed SNR ratio between Spec-S5 and DESI — accounting for both the larger
-6m mirror and Spec-S5's smaller fiber (greater aperture loss on extended
-sources) — before evaluating the DESI-calibrated curve; this is the BGS
-analogue of the stellar code's `_DESI_MIRROR_MAG_OFFSET` trick, computed
-per-case rather than as a fixed constant.
+For extended sources, only part of the galaxy's light falls within the fiber.
+This is modeled with a Sersic profile convolved with Gaussian seeing
+(`spec5.instrument.galaxy_photometry.seeing_capture_fraction`), by default an
+exponential disk (`sersic_n=1.0`) in 1.1" seeing, and is applied relative to a
+point source because the throughput tables already include point-source fiber
+losses. Predicting Spec-S5's redshift-success probability (`instrument='spec5'`)
+finds the magnitude at which DESI, at its reference 1x180 s effective exposure in
+nominal conditions, reaches the SNR Spec-S5 achieves, then evaluates the
+DESI-calibrated curve there. `seeing_fwhm` and `sky_scale` set Spec-S5's observing
+conditions; by default the tabulated dark sky applies, so `texp` is a dark-time
+effective exposure. Radii below 1" raise a warning because they fall outside the
+calibration sample, and magnitudes past the `r_fiber < 22.9` sample limit return 0.
 
 Mock observations (drawing a per-galaxy Bernoulli success outcome) are
 available via `observe_bgs_with_spec5` / `observe_bgs_with_desi` in

@@ -152,11 +152,12 @@ Headline finding: a naive success-rate-vs-magnitude fit is **non-monotonic**
 and misleading at the bright end — it's driven by point-source/compact
 contaminants in the targeting catalog (SHAPE_R < 0.5″), not by SNR. Once
 restricted to genuinely extended sources (SHAPE_R > 1.0″), the relation is
-clean: success flat at ~98.4-98.8% from r_fiber~17-20.7, declining smoothly
-to ~80% by r_fiber~22 — consistent with Hahn et al. 2023's qualitative
-description. This fitted curve (logistic, `x0=21.89, k=0.184, floor=0.661,
-ceil=0.986` in `research/bgs_path_b/logistic_fit_extended_rfibermag.txt`) is
-the calibration to carry into `compute_redshift_success` (§3).
+clean: success flat at ~98.4-99.2% from r_fiber~17-20.7, declining through
+~80% at r_fiber~22 and flattening near 0.4 out to the r_fiber < 22.9 survey
+limit — consistent with Hahn et al. 2023's qualitative description. This binned
+curve, made monotone at load time, is the calibration used by
+`compute_redshift_success` (§3); the logistic in
+`research/bgs_path_b/logistic_fit_extended_rfibermag.txt` is only a summary.
 
 A second finding worth keeping in mind for §3's SNR_r calculation: DESI's
 *realized* SNR_BGS has very little dynamic range across the BGS Bright

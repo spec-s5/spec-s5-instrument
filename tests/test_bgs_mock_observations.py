@@ -81,3 +81,14 @@ def test_very_faint_mostly_fails_very_bright_mostly_succeeds():
 
     assert out_bright['success'].mean() > 0.9
     assert out_faint['success'].mean() < out_bright['success'].mean()
+
+
+def test_desi_rejects_spec5_only_fiber_diameter():
+    with pytest.raises(TypeError):
+        observe_bgs_with_desi(GALAXIES, fiber_diameter=120)
+
+
+def test_observing_conditions_reach_spec5_prediction():
+    base = observe_bgs_with_spec5(GALAXIES, seed=0)
+    bright = observe_bgs_with_spec5(GALAXIES, seed=0, sky_scale=5.0)
+    assert bright['success_prob'][2] < base['success_prob'][2]

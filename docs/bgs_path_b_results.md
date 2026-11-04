@@ -18,8 +18,8 @@ Relevant columns: `ZWARN`, `DELTACHI2`, `SPECTYPE`, `TSNR2_BGS`,
 
 ## Success criterion
 
-Following DESI's own binary redshift-recovery definition (Hahn et al. 2023;
-Guy et al. 2023):
+Following the Hahn et al. 2023 (§5.3) redshift-success criteria that can be
+evaluated without a deep comparison spectrum:
 
 ```
 success = (ZWARN == 0) & (DELTACHI2 > 40) & (SPECTYPE == 'GALAXY')
@@ -28,6 +28,25 @@ success = (ZWARN == 0) & (DELTACHI2 > 40) & (SPECTYPE == 'GALAXY')
 applied over all `COADD_FIBERSTATUS == 0` (good fiber) rows — not just rows
 already classified `SPECTYPE == 'GALAXY'`, since a misclassification away
 from GALAXY is itself a failure mode that must count against the rate.
+
+Other definitions exist, so this choice matters. Hahn et al. 2023 do require
+`SPECTYPE == 'GALAXY'`, but the LSS code does not: `goodz_infull` in
+`desihub/LSS` (`py/LSS/common_tools.py`) uses only `ZWARN == 0` and
+`DELTACHI2 > 40` for BGS, and the `desispec_validate` copy in the same file
+rejects only `SPECTYPE == 'STAR'`. Hahn et al.'s `ZERR < 0.0005(1+z)` criterion
+is omitted here because it changes the rate by only ~0.0002 at most.
+For the extended sample (`SHAPE_R > 1"`):
+
+| r_fiber | Hahn subset (adopted) | SPECTYPE != STAR | no SPECTYPE cut (LSS) |
+|---|---|---|---|
+| all | 97.61% | 98.30% | 98.61% |
+| 19.05 | 98.43% | 99.66% | 99.98% |
+| 21.05 | 98.42% | 98.66% | 98.84% |
+| 21.95 | 79.63% | 79.82% | 80.03% |
+| 22.85 | 39.08% | 39.28% | 40.62% |
+
+So the ~1.3% shortfall on the bright plateau comes from QSO and STAR
+classifications rather than SNR. The choice barely moves the faint-end decline.
 
 Overall success rate across the full good-fiber sample: **97.2%** (consistent
 with, slightly below, the literature DR1 benchmark of ~99.35% quoted for
@@ -101,37 +120,92 @@ should not be absorbed into the SNR-vs-success calibration curve.
 ## Finding 3 — the clean relation, after excluding point-source contaminants
 
 Restricting to `SHAPE_R > 1.0″` (genuinely resolved sources; ~49% of the
-full sample) recovers a clean, monotonic, physically sensible relation:
+full sample) recovers a clean, physically sensible relation. Bins run to the
+survey's own limit, the `r_fiber < 22.9` cut of Hahn et al. 2023 Eq. 2:
 
-| r_fiber mag | success rate |
-|---|---|
-| 17–20.5 | 98.4–98.8% (flat) |
-| 20.7 | 98.8% (peak) |
-| 21.0 | 98.4% |
-| 21.5 | 94.3% |
-| 21.75 | 88.7% |
-| 22.0 | 79.6% |
+| r_fiber mag | success rate | N in bin |
+|---|---|---|
+| 17–20.5 | 98.4–99.2% (flat within noise) | |
+| 20.75 | 98.8% | 197,825 |
+| 21.05 | 98.4% | 137,835 |
+| 21.55 | 94.3% | 41,502 |
+| 21.95 | 79.6% | 12,454 |
+| 22.25 | 62.7% | 5,826 |
+| 22.55 | 42.2% | 2,726 |
+| 22.85 | 39.1% | 1,492 |
 
 (full table: `research/bgs_path_b/bgs_redshift_success_extended_vs_rfibermag.csv`)
 
-This matches Hahn et al. 2023's qualitative claim (>95% success for BGS
-Bright r<19.5, declining gradually through BGS Faint) and is the curve
-adopted as the v1 calibration for `compute_redshift_success` (§3 of
-`bgs_plan.md`).
+An earlier version of the fit stopped at 22.0 only because of its binning
+range, which looked like an edge at 0.80. The sample really continues to 22.9.
 
-Fitted logistic, `P(success | r_fiber_mag) = floor + (ceil-floor) / (1 +
-exp((m - x0)/k))`:
+The decline flattens to ~0.4 for r_fiber > 22.5. This analysis did not
+establish why. Success at these magnitudes may depend more on emission lines
+than continuum; if so, the curve's faint end won't track continuum SNR, and
+results that map onto it (r_fiber-equivalent > 22.5) should be read with
+caution.
+
+This matches Hahn et al. 2023's qualitative claim (>95% success for BGS
+Bright r<19.5, declining gradually through BGS Faint) and is the v1 calibration
+for `compute_redshift_success`. At runtime, the table is made monotone with
+N-weighted isotonic regression, then interpolated with PCHIP. PCHIP alone would
+keep the noise on the bright plateau, and added exposure could then lower
+P(success). Past r_fiber = 22.9 no targets exist, and the code returns 0, a
+deliberately conservative step down from 0.39.
+
+The fitted logistic, `P(success | r_fiber_mag) = floor + (ceil-floor) / (1 +
+exp((m - x0)/k))`, is a compact summary and is not used at runtime:
 
 ```
-x0    = 21.8926
-k     =  0.1840
-floor =  0.6614
-ceil  =  0.9863
+x0    = 22.1482
+k     =  0.2316
+floor =  0.3604
+ceil  =  0.9870
 ```
 
 Sanity check against the Hahn+23 design anchor (>95% success for BGS Bright
-near r<19.5): this fit gives **98.4%** at r_fiber~19.5 — consistent, with
+near r<19.5): this fit gives **98.7%** at r_fiber~19.5 — consistent, with
 headroom.
+
+Compact sources are not calibrated. For `0 < SHAPE_R < 1″` the rate climbs from
+~35% at r_fiber~17 to ~99% at r_fiber~20.7. That runs opposite to an SNR trend
+and looks contaminant-driven, so `compute_redshift_success` warns for
+`half_light_radius < 1″` rather than using a compact curve.
+
+## Translating the curve to Spec-S5
+
+`compute_redshift_success` finds the magnitude m′ at which DESI reaches the
+r-arm SNR Spec-S5 achieves, then evaluates the curve at m′:
+
+- **Fixed reference.** The curve corresponds to DESI at 1×180 s effective time
+  in nominal conditions (dark sky, 1.1″ seeing; Hahn et al. 2023 §4.1), because
+  DESI's ETC scales exposures to that effective time. The reference doesn't
+  change with the Spec-S5 `texp`/`nexp`.
+- **Exact inversion.** m′ solves SNR_DESI(m′) = SNR_S5(m), including sky and
+  read noise. The r-arm is sky-limited at these magnitudes, so
+  `m - 5 log10(ratio)` would overstate the gain (by ~0.6 mag at r_fiber = 22).
+- **Fiber losses.** The throughput tables already contain point-source fiber
+  losses, and `FIBERFLUX_R` already excludes light outside a 1.5″ fiber in 1″
+  seeing. Source photons are therefore scaled by
+  `C(gal⊗PSF, D) / C(PSF, D) / C(gal⊗PSF_LS, 1.5″)`, for each instrument's
+  fiber diameter D.
+
+The result is m′ − m ≈ −0.72 to −0.76 mag at the default hlr = 1.5″, 107 µm.
+
+Known limitations:
+
+- **PSF in the throughput tables.** The tables don't state their PSF. Assuming
+  the 120/107 µm throughput ratio is purely Gaussian seeing, it implies a FWHM
+  of ~0.84″, compared with the 1.1″ default. `seeing_fwhm` changes a galaxy's
+  capture relative to a point source but not the tabulated point-source
+  throughput.
+- **Sky level.** The tabulated sky is ~21.3 AB mag/arcsec² at 6500 Å, against
+  Hahn et al.'s nominal r = 21.07. It's the same for both instruments, so
+  `texp` means dark-time effective exposure. For real exposures under brighter
+  sky, use `sky_scale`, which scales the sky grey and has no moon-sky spectral
+  shape.
+- **Single SNR metric.** The translation uses continuum SNR only, with no
+  allowance for emission-line success.
 
 ## Cross-check: DESI's own `mod_success_rate` column
 
@@ -151,7 +225,3 @@ check rather than a calibration source.
 - Decide the production `SHAPE_R` (or fiber-flux-fraction) cut threshold
   more rigorously — 1.0″ was a reasonable round-number choice validated
   against the table above, not an optimized value.
-- The fiber-aperture-loss term for Spec-S5 (different fiber diameter than
-  DESI's 1.51″) still needs its own derivation (`bgs_plan.md` §2.3 step 5) —
-  this analysis calibrates DESI's success-vs-magnitude curve, not yet the
-  translation to Spec-S5's own aperture.

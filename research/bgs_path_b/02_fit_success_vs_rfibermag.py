@@ -47,7 +47,9 @@ print(f"Overall success rate (extended sample): {success[sel].mean():.5f}")
 rmag = rfibmag[sel]
 succ = success[sel].astype(float)
 
-mag_bins = np.linspace(17.0, 22.0, 51)
+# Faint edge is the survey's own limit: the Hahn et al. 2023 Eq. 2 fiber
+# magnitude cut, r_fiber < 22.9, rather than an arbitrary analysis range.
+mag_bins = np.linspace(17.0, 22.9, 60)
 centers, rates, ns = [], [], []
 for i in range(len(mag_bins) - 1):
     m = (rmag >= mag_bins[i]) & (rmag < mag_bins[i + 1])

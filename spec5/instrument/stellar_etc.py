@@ -24,17 +24,21 @@ _CLIGHT  = 2.99792458e10    # cm/s
 # Package data directory
 _DATA_DIR = Path(__file__).parent / "data"
 
+# Fiber angular diameters, arcsec. Spec-S5 is keyed by physical diameter (µm).
+_SPEC5_FIBER_ANGULAR_DIAMETER = {107: 1.02, 120: 1.144}
+_DESI_FIBER_ANGULAR_DIAMETER = 1.51
+
 
 def _photon_counting_core(m, nexp, texp, fiber_diameter=107,
-                           aperture_loss_s5=1.0, aperture_loss_d=1.0):
+                           source_scale_s5=1.0, source_scale_d=1.0,
+                           sky_scale=1.0):
     """
     Shared photon-counting SNR core for DESI and Spec-S5.
 
     Computes per-Å photon counts and SNR at the 14 throughput-curve
-    wavelength nodes, for an arbitrary fraction of the source's flux
-    captured by each instrument's fiber. Used by both the point-source
-    stellar model (``compute_snr``, loss=1) and the extended-source BGS
-    model (``spec5.instrument.bgs_etc.compute_bgs_snr``, loss<1).
+    wavelength nodes. Used by both the point-source stellar model
+    (``compute_snr``) and the extended-source BGS model
+    (``spec5.instrument.bgs_etc.compute_bgs_snr``).
 
     Parameters
     ----------
@@ -47,11 +51,15 @@ def _photon_counting_core(m, nexp, texp, fiber_diameter=107,
         Total exposure time in seconds (summed over all sub-exposures).
     fiber_diameter : {107, 120}
         Spec-S5 fiber diameter in microns. 107 µm is the baseline design.
-    aperture_loss_s5, aperture_loss_d : float or array-like, shape () or (N,)
-        Fraction of the source's total flux captured by the Spec-S5 / DESI
-        fiber respectively (1.0 = point source, fully captured). Applied to
-        the source photon counts only — sky photon counts fill the whole
-        fiber aperture regardless of source compactness.
+    source_scale_s5, source_scale_d : float or array-like, shape () or (N,)
+        Multiplier on the source photon counts for Spec-S5 / DESI. The
+        ``thru_s5`` / ``thru_d`` tables are point-source throughputs that
+        already include fiber losses, so 1.0 means a point source of AB
+        magnitude ``m``. This is not a capture fraction and may exceed 1;
+        see ``bgs_etc._fiber_source_scale``. Sky photons are unaffected.
+    sky_scale : float
+        Multiplier on the tabulated sky spectrum, applied to both
+        instruments (default 1.0, the table's dark-time sky).
 
     Returns
     -------
@@ -68,13 +76,11 @@ def _photon_counting_core(m, nexp, texp, fiber_diameter=107,
                              0.1169, 0.1250, 0.1237, 0.1138, 0.1368, 0.1378, 0.1387, 0.0895])
         thru_s5_sky = np.array([0.0959, 0.1343, 0.1871, 0.2813, 0.2716, 0.2529,
                                  0.2920, 0.3133, 0.3109, 0.2865, 0.3444, 0.3471, 0.3497, 0.2261])
-        df_s5 = 1.02   # arcsec fiber diameter
     elif fiber_diameter == 120:
         thru_s5 = np.array([0.0422, 0.0596, 0.0837, 0.1269, 0.1231, 0.1147,
                              0.1322, 0.1414, 0.1400, 0.1288, 0.1548, 0.1560, 0.1569, 0.1012])
         thru_s5_sky = np.array([0.0959, 0.1343, 0.1871, 0.2813, 0.2716, 0.2529,
                                  0.2920, 0.3133, 0.3109, 0.2865, 0.3444, 0.3471, 0.3497, 0.2261])
-        df_s5 = 1.144  # arcsec fiber diameter
     else:
         raise ValueError("fiber_diameter must be 107 (baseline) or 120 microns.")
 
@@ -82,7 +88,8 @@ def _photon_counting_core(m, nexp, texp, fiber_diameter=107,
                        0.1117, 0.1216, 0.1231, 0.1155, 0.1433, 0.1456, 0.1440, 0.0845])
     thru_d_sky = np.array([0.0631, 0.1017, 0.1537, 0.2113, 0.2284, 0.2262,
                             0.2716, 0.2976, 0.3033, 0.2859, 0.3558, 0.3619, 0.3586, 0.2107])
-    df_d = 1.51   # arcsec
+    df_s5 = _SPEC5_FIBER_ANGULAR_DIAMETER[fiber_diameter]
+    df_d = _DESI_FIBER_ANGULAR_DIAMETER
 
     d_d  = 3.797e2   # cm  (DESI)
     d_s5 = 6.0e2     # cm  (Spec-S5)
@@ -91,7 +98,7 @@ def _photon_counting_core(m, nexp, texp, fiber_diameter=107,
     flamsky = np.array([1.69e-17, 1.50e-17, 1.22e-17, 1.59e-17, 1.03e-17, 1.02e-17,
                         9.59e-18, 7.89e-18, 8.02e-18, 7.73e-18, 7.76e-18, 7.73e-18,
                         5.86e-18, 8.00e-18])
-    phsky = flamsky / (_HPLANCK * _CLIGHT * 1e8 / lam_t)   # photons/s/cm²/Å/arcsec²
+    phsky = sky_scale * flamsky / (_HPLANCK * _CLIGHT * 1e8 / lam_t)   # photons/s/cm²/Å/arcsec²
 
     noise_ccd_d  = np.array([3.35] * 6 + [2.72] * 8)
     noise_ccd_s5 = np.array([1.18] * 6 + [2.72] * 8)
@@ -103,19 +110,19 @@ def _photon_counting_core(m, nexp, texp, fiber_diameter=107,
     flam = fnu * (_CLIGHT * 1e8) / lam_t**2                 # (N, L)
     phot = flam / (_HPLANCK * _CLIGHT * 1e8 / lam_t)        # (N, L)
 
-    # Fraction of source flux captured by each fiber — (N, 1), broadcasts
-    # against phot (N, L). Scalar input (point source) broadcasts to all N.
-    loss_s5 = np.atleast_1d(np.asarray(aperture_loss_s5, dtype=float))[:, None]
-    loss_d  = np.atleast_1d(np.asarray(aperture_loss_d,  dtype=float))[:, None]
+    # Source scaling — (N, 1), broadcasts against phot (N, L). Scalar input
+    # (point source) broadcasts to all N.
+    scale_s5 = np.atleast_1d(np.asarray(source_scale_s5, dtype=float))[:, None]
+    scale_d  = np.atleast_1d(np.asarray(source_scale_d,  dtype=float))[:, None]
 
     # DESI — noise (L,) broadcasts against phot (N, L)
-    ph_d    = phot  * loss_d  * pi * (d_d  / 2) ** 2 * texp * thru_d  # (N, L)
+    ph_d    = phot  * scale_d  * pi * (d_d  / 2) ** 2 * texp * thru_d  # (N, L)
     phsky_d = phsky * pi * (d_d  / 2) ** 2 * texp * pi * (df_d  / 2) ** 2 * thru_d_sky
     noise_d = np.sqrt(ph_d + phsky_d  + nexp * noise_ccd_d  ** 2)  # (N, L)
     snr_d   = ph_d  / noise_d                                # (N, L)
 
     # Spec-S5
-    ph_s5    = phot  * loss_s5 * pi * (d_s5 / 2) ** 2 * texp * thru_s5  # (N, L)
+    ph_s5    = phot  * scale_s5 * pi * (d_s5 / 2) ** 2 * texp * thru_s5  # (N, L)
     phsky_s5 = phsky * pi * (d_s5 / 2) ** 2 * texp * pi * (df_s5 / 2) ** 2 * thru_s5_sky
     noise_s5 = np.sqrt(ph_s5 + phsky_s5 + nexp * noise_ccd_s5 ** 2)   # (N, L)
     snr_s5   = ph_s5 / noise_s5                                # (N, L)
