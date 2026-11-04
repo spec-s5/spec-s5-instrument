@@ -72,6 +72,21 @@ def test_redshift_success_is_probability():
     assert np.all(p >= 0.0) and np.all(p <= 1.0)
 
 
+def test_redshift_success_faint_extrapolation_goes_to_zero():
+    # Beyond the faint edge of the calibration table (~22 mag), the success
+    # rate should drop to zero rather than hold flat at the last tabulated
+    # (still steeply-declining) value.
+    assert compute_redshift_success(25.0, instrument="desi") == 0.0
+    assert compute_redshift_success(30.0, instrument="desi") == 0.0
+
+
+def test_redshift_success_bright_extrapolation_clamps():
+    # Brighter than the table's bright edge, clamp to the brightest
+    # tabulated rate rather than extrapolating toward zero.
+    bright_edge = compute_redshift_success(17.05, instrument="desi")
+    assert compute_redshift_success(10.0, instrument="desi") == pytest.approx(bright_edge)
+
+
 def test_redshift_success_bad_instrument_raises():
     with pytest.raises(ValueError):
         compute_redshift_success(19.5, instrument="not-a-real-instrument")

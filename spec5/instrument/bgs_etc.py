@@ -136,8 +136,15 @@ def _load_success_curve(bgs_type):
         )
     data = np.loadtxt(_DATA_DIR / _BGS_SUCCESS_FILES[bgs_type], delimiter=",", comments="#")
     mags, rates = data[:, 0], data[:, 1]
+    # Bright end: no calibration data brighter than the table either (bright
+    # BGS targets are rare and were excluded from the fit), so clamp to the
+    # brightest tabulated rate. Faint end: rather than clamp to the faintest
+    # tabulated rate (still a steeply-declining ~0.80 at the table edge),
+    # drop to zero -- the success rate is manifestly still falling, and
+    # holding it flat would overstate completeness for targets fainter than
+    # anything DESI DR1 actually calibrated.
     return interp1d(mags, rates, kind="cubic", bounds_error=False,
-                     fill_value=(rates[0], rates[-1]))
+                     fill_value=(rates[0], 0.0))
 
 
 def compute_redshift_success(r_fiber_mag, instrument="spec5", bgs_type="bright",
@@ -183,7 +190,13 @@ def compute_redshift_success(r_fiber_mag, instrument="spec5", bgs_type="bright",
     Returns
     -------
     float or ndarray
-        Redshift-success probability, in [0, 1].
+        Redshift-success probability, in [0, 1]. Magnitudes brighter than
+        the calibration table clamp to the brightest tabulated rate.
+        Magnitudes fainter than the table (r_fiber_mag > ~22) return 0 —
+        the tabulated rate is still declining steeply at the faint edge, so
+        holding it flat would overstate completeness beyond anything DESI
+        DR1 actually calibrated. Note this is a step down to 0 right past
+        the table edge, not a smooth decline.
     """
     scalar_input = np.ndim(r_fiber_mag) == 0
     m = np.atleast_1d(np.asarray(r_fiber_mag, dtype=float))
