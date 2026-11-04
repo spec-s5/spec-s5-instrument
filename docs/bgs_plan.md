@@ -9,10 +9,11 @@ Author: kadrlica (plan drafted with Claude)
 (`compute_bgs_snr`, `compute_redshift_success`),
 `observe_bgs_with_spec5`/`observe_bgs_with_desi` in `mock_observations.py`,
 calibration data (`spec5/instrument/data/bgs_redshift_success_bright.csv`),
-tests (`tests/test_bgs_etc.py`, `tests/test_bgs_mock_observations.py`), and
-a README section. **Not yet done**: BGS Faint calibration, a demo notebook,
-and validation against a mock BGS catalog with a realistic
-half-light-radius distribution (see §4 and §3 item 5 below).
+tests (`tests/test_bgs_etc.py`, `tests/test_bgs_mock_observations.py`), a
+README section, and a demo notebook (`notebooks/BGS_SNR_ETC.ipynb`).
+**Not yet done**: BGS Faint calibration, and validation against a mock BGS
+catalog with a realistic (non-toy) half-light-radius distribution (see §4
+and §3 item 5 below).
 
 ## 1. Motivation
 

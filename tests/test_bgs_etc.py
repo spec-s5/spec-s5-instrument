@@ -26,6 +26,13 @@ def test_compute_bgs_snr(m):
     assert r["snr_r_d"] == pytest.approx(EXPECTED_SNR_R_D[m], rel=1e-5)
 
 
+def test_compute_bgs_snr_scalar_input_returns_1d_wavelength_arrays():
+    r = compute_bgs_snr(19.5, nexp=1, texp=180.0, half_light_radius=1.5)
+    assert r["snr_s5_t"].shape == r["lam_t"].shape
+    assert r["snr_d_t"].shape == r["lam_t"].shape
+    assert np.ndim(r["snr_r_s5"]) == 0
+
+
 def test_compute_bgs_snr_vectorised_matches_scalar():
     scalar_results = [compute_bgs_snr(m, nexp=1, texp=180.0, half_light_radius=1.5)
                        for m in MAGS]

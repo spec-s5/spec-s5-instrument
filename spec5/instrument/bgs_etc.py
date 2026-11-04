@@ -122,7 +122,7 @@ def compute_bgs_snr(r_fiber_mag, nexp, texp, fiber_diameter=107,
 
     if scalar_input:
         for key in ("snr_r_s5", "snr_r_d", "capture_frac_s5", "capture_frac_d",
-                    "half_light_radius", "r_fiber_mag"):
+                    "half_light_radius", "r_fiber_mag", "snr_s5_t", "snr_d_t"):
             result[key] = result[key][0]
 
     return result
