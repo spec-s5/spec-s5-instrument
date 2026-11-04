@@ -138,6 +138,9 @@ DESI-calibrated curve there. `seeing_fwhm` and `sky_scale` set Spec-S5's observi
 conditions; by default the tabulated dark sky applies, so `texp` is a dark-time
 effective exposure. Radii below 1" raise a warning because they fall outside the
 calibration sample, and magnitudes past the `r_fiber < 22.9` sample limit return 0.
+The PSF assumed for the throughput tables is unconfirmed and strongly affects the
+Spec-S5 depth gain for extended galaxies (0.72 mag at the assumed 1.1", about 0.4 mag
+at the PSF the tables may imply); see `docs/bgs_path_b_results.md`.
 
 Mock observations (drawing a per-galaxy Bernoulli success outcome) are
 available via `observe_bgs_with_spec5` / `observe_bgs_with_desi` in

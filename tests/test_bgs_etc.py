@@ -10,7 +10,9 @@ from scipy.optimize import brentq
 
 from spec5.instrument.bgs_etc import (
     _R_FIBER_SAMPLE_LIMIT,
+    _TABLE_SEEING_FWHM,
     _desi_equivalent_mag,
+    _fiber_source_scale,
     _load_success_curve,
     compute_bgs_snr,
     compute_redshift_success,
@@ -180,8 +182,35 @@ def test_spec5_gain_is_not_the_source_poisson_shift():
 def test_aperture_penalty_is_relative_to_point_source(fwhm, expected):
     # hlr=1.5", n=1: PSF-aware penalty is well above the intrinsic ratio of
     # 0.54, because the throughput tables already hold point-source losses.
-    r = compute_bgs_snr(19.5, 1, 180.0, half_light_radius=1.5, seeing_fwhm=fwhm)
-    assert r["source_scale_s5"] / r["source_scale_d"] == pytest.approx(expected, abs=2e-3)
+    # Here the tables and the observation share the same seeing.
+    scale_s5 = _fiber_source_scale(1.5, 1.02, 1.0, fwhm, table_seeing_fwhm=fwhm)
+    scale_d = _fiber_source_scale(1.5, 1.51, 1.0, fwhm, table_seeing_fwhm=fwhm)
+    assert scale_s5 / scale_d == pytest.approx(expected, abs=2e-3)
+
+
+SEEING_GRID = [0.6, 0.8, 1.0, 1.1, 1.3, 1.5, 1.8]
+
+
+@pytest.mark.parametrize("hlr", [0.0, 0.05, 0.5, 1.0, 1.5, 3.0, 8.0])
+def test_success_non_increasing_in_seeing(hlr):
+    mags = np.linspace(20.0, 25.0, 51)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        p = np.array([compute_redshift_success(mags, half_light_radius=hlr, seeing_fwhm=s)
+                      for s in SEEING_GRID])
+    assert np.all(np.diff(p, axis=0) <= 1e-12)
+    # and seeing has a real effect somewhere in this range
+    assert np.max(p[0] - p[-1]) > 0.01
+
+
+@pytest.mark.parametrize("fiber", [1.02, 1.144, 1.51])
+@pytest.mark.parametrize("seeing", [0.8, 1.5])
+def test_point_source_scales_with_capture_at_observing_seeing(fiber, seeing):
+    ratio = _fiber_source_scale(0.0, fiber, 1.0, seeing) / \
+        _fiber_source_scale(0.0, fiber, 1.0, _TABLE_SEEING_FWHM)
+    expected = point_source_capture_fraction(fiber, seeing) / \
+        point_source_capture_fraction(fiber, _TABLE_SEEING_FWHM)
+    assert ratio == pytest.approx(expected)
 
 
 def test_compact_source_has_no_relative_aperture_penalty():
@@ -194,7 +223,7 @@ def test_compact_source_has_no_relative_aperture_penalty():
 def test_desi_fiberflux_not_charged_a_second_fiber_loss():
     # At the FIBERFLUX reference seeing and (nearly) its fiber, the galaxy's
     # shape cancels: the fiber magnitude already encodes its aperture loss.
-    scales = [compute_bgs_snr(19.5, 1, 180.0, half_light_radius=h, seeing_fwhm=1.0)["source_scale_d"]
+    scales = [_fiber_source_scale(h, 1.51, 1.0, 1.0, table_seeing_fwhm=1.0)
               for h in [1.0, 1.5, 4.0]]
     assert scales == pytest.approx([1.0 / point_source_capture_fraction(1.51, 1.0)] * 3, rel=0.015)
 

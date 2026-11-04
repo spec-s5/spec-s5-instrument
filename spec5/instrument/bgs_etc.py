@@ -46,6 +46,11 @@ _DESI_REF_NEXP = 1
 _DESI_REF_TEXP = 180.0         # s
 _NOMINAL_SEEING_FWHM = 1.1     # arcsec
 
+# Gaussian seeing assumed for the point-source fiber loss built into the
+# throughput tables. The tables don't state their PSF, so this is an assumption;
+# see "Known limitations" in docs/bgs_path_b_results.md.
+_TABLE_SEEING_FWHM = 1.1       # arcsec
+
 # Calibration validity limits: the r_fiber < 22.9 survey cut (Hahn et al. 2023
 # Eq. 2) and the SHAPE_R > 1" cut applied to the calibration sample.
 _R_FIBER_SAMPLE_LIMIT = 22.9
@@ -56,24 +61,26 @@ _BGS_SUCCESS_FILES = {
 }
 
 
-def _fiber_source_scale(half_light_radius, fiber_angular_diameter, sersic_n, seeing_fwhm):
+def _fiber_source_scale(half_light_radius, fiber_angular_diameter, sersic_n, seeing_fwhm,
+                        table_seeing_fwhm=_TABLE_SEEING_FWHM):
     """
     Photon-count multiplier for a galaxy of FIBERFLUX-convention magnitude,
     relative to a point source of that AB magnitude in the throughput tables.
 
-    The tables already include the point-source fiber loss, and FIBERFLUX
-    already excludes light outside its reference fiber. Undoing both, and
-    applying the galaxy's capture in the fiber actually used, gives
+    The tables already include a fixed point-source fiber loss, at the seeing
+    they assume, and FIBERFLUX already excludes light outside its reference
+    fiber. Undoing both, and applying the galaxy's capture in the fiber
+    actually used under the observing seeing, gives
 
-        C(gal*PSF, D) / C(PSF, D) / C(gal*PSF_LS, 1.5")
+        C(gal*PSF_obs, D) / C(PSF_table, D) / C(gal*PSF_LS, 1.5")
 
-    This can exceed 1. A point source observed in the FIBERFLUX reference
-    conditions gets 1 / C(PSF_LS, 1.5"), because its FIBERFLUX mag is fainter
-    than its total mag.
+    This can exceed 1. A point source gets
+    C(PSF_obs, D) / C(PSF_table, D) / C(PSF_LS, 1.5"): worse seeing loses light
+    from the fiber, and its FIBERFLUX mag is fainter than its total mag.
     """
     capture = seeing_capture_fraction(half_light_radius, fiber_angular_diameter,
                                       seeing_fwhm, sersic_n=sersic_n)
-    capture_psf = point_source_capture_fraction(fiber_angular_diameter, seeing_fwhm)
+    capture_psf = point_source_capture_fraction(fiber_angular_diameter, table_seeing_fwhm)
     capture_fiberflux = seeing_capture_fraction(half_light_radius, _FIBERFLUX_DIAMETER,
                                                 _FIBERFLUX_SEEING_FWHM, sersic_n=sersic_n)
     return capture / capture_psf / capture_fiberflux
@@ -105,9 +112,9 @@ def compute_bgs_snr(r_fiber_mag, nexp, texp, fiber_diameter=107,
         disk).
     seeing_fwhm : float
         Gaussian seeing FWHM during the observation, arcsec (default: 1.1",
-        DESI's nominal conditions; Hahn et al. 2023). Sets the galaxy's
-        fiber capture relative to a point source. The point-source
-        throughput tables themselves are held fixed.
+        DESI's nominal conditions; Hahn et al. 2023). Sets the fiber capture
+        relative to the seeing assumed for the throughput tables, so worse
+        seeing lowers source photons for galaxies and point sources alike.
     sky_scale : float
         Multiplier on the tabulated sky (default: 1.0). The table is
         dark-time sky, about r = 21.3 AB mag/arcsec². With the default,
