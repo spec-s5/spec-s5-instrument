@@ -113,22 +113,46 @@ exclusive:
    — exactly mirroring how `observe_with_desi` reuses `compute_measurement_errors`
    with a mirror-area magnitude offset today.
 
-### 2.4 Open questions to resolve before/during implementation
+### 2.4 Open questions — resolved
 
-- Binary success probability only, or also a continuous redshift-error model
-  for successes (DESI doesn't publish a `sigma_z(SNR)` the way it does for
-  stellar RV — Δχ² is a detection/non-detection statistic, not a precision
-  metric)? Recommend: **binary Bernoulli success draw** as the primary
-  deliverable; flag continuous z-scatter as a stretch goal only if a
-  reasonable data source turns up during Path B.
-  (This is a request for review in the prior conversation — resolve before
-  starting §3 implementation.)
+- **Redshift recovery is modeled as binary success/fail (resolved).**
+  Following DESI's own framework (Hahn et al. 2023; Guy et al. 2023): Δχ² is
+  a detection/non-detection statistic, not a precision metric, and DESI
+  itself has no published `sigma_z(SNR)` for successes. `compute_redshift_success`
+  returns `P(success | SNR_r or r_fiber_mag)` and the mock-observation layer
+  draws a Bernoulli outcome from it — no continuous z-scatter model.
 - Single fixed half-light radius (1.5″, matching DESI's TSNR2 convention) vs.
   a BGS size distribution — start with the fixed value for v1, matching how
   `star_type` is a fixed enum in the stellar code today.
 - BGS Bright vs. BGS Faint as one combined relation or two separate curves —
   Hahn+23 gives separate numbers for both, so plan for two calibration curves
-  (mirrors `star_type='giant'|'dwarf'` having two data files today).
+  (mirrors `star_type='giant'|'dwarf'` having two data files today). Path B
+  (§2.5) has so far only been run for BGS Bright; BGS Faint is the natural
+  next slice of the same analysis.
+
+### 2.5 Path B results (executed)
+
+Path B has been run against the real DR1 BGS Bright "full" LSS catalog
+(iron reduction, v1.5). Scripts, data, and full writeup:
+`research/bgs_path_b/` and `docs/bgs_path_b_results.md`.
+
+Headline finding: a naive success-rate-vs-magnitude fit is **non-monotonic**
+and misleading at the bright end — it's driven by point-source/compact
+contaminants in the targeting catalog (SHAPE_R < 0.5″), not by SNR. Once
+restricted to genuinely extended sources (SHAPE_R > 1.0″), the relation is
+clean: success flat at ~98.4-98.8% from r_fiber~17-20.7, declining smoothly
+to ~80% by r_fiber~22 — consistent with Hahn et al. 2023's qualitative
+description. This fitted curve (logistic, `x0=21.89, k=0.184, floor=0.661,
+ceil=0.986` in `research/bgs_path_b/logistic_fit_extended_rfibermag.txt`) is
+the calibration to carry into `compute_redshift_success` (§3).
+
+A second finding worth keeping in mind for §3's SNR_r calculation: DESI's
+*realized* SNR_BGS has very little dynamic range across the BGS Bright
+sample, because the survey adaptively exposes each tile until a target
+effective time is reached — so SNR-vs-success is nearly flat in the raw
+data and the signal only emerges when normalized to a fixed reference
+exposure time (or, as used here, by binning on magnitude instead, which
+isn't affected by each tile's individual exposure history).
 
 ## 3. Implementation plan
 
@@ -148,10 +172,11 @@ Mirrors the existing module structure/conventions in `spec5/instrument/`.
      `compute_bgs_snr`, then evaluates the calibrated logistic/sigmoid
      `P(success | SNR_r)` from a tabulated data file (loaded via
      `scipy.interpolate`, same pattern as `dist_err_vs_snr_*.csv`).
-2. **Data files**: `spec5/instrument/data/bgs_redshift_success_bright.csv` and
-   `..._faint.csv` (or fitted-parameter constants if Path A/sigmoid-only) —
-   holding the curve(s) derived in the research phase. No `pyproject.toml`
-   change needed (`data/*.csv` is already globbed).
+2. **Data files**: `spec5/instrument/data/bgs_redshift_success_bright.csv` —
+   copy of `research/bgs_path_b/bgs_redshift_success_extended_vs_rfibermag.csv`
+   (success rate vs. r_fiber mag, extended-source-only, §2.5) plus a
+   `..._faint.csv` once that slice is run. No `pyproject.toml` change needed
+   (`data/*.csv` is already globbed).
 3. **`spec5/instrument/mock_observations.py`**: add `observe_bgs_with_spec5`
    and `observe_bgs_with_desi`, mirroring `observe_with_spec5`/
    `observe_with_desi` — input a mock galaxy catalog (fiber mag, half-light
