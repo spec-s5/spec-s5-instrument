@@ -25,34 +25,41 @@ _CLIGHT  = 2.99792458e10    # cm/s
 _DATA_DIR = Path(__file__).parent / "data"
 
 
-def compute_snr(m, nexp, texp, fiber_diameter=107):
+def _photon_counting_core(m, nexp, texp, fiber_diameter=107,
+                           aperture_loss_s5=1.0, aperture_loss_d=1.0):
     """
-    Compute photon counts and SNR for DESI and Spec-S5 instruments.
+    Shared photon-counting SNR core for DESI and Spec-S5.
+
+    Computes per-Å photon counts and SNR at the 14 throughput-curve
+    wavelength nodes, for an arbitrary fraction of the source's flux
+    captured by each instrument's fiber. Used by both the point-source
+    stellar model (``compute_snr``, loss=1) and the extended-source BGS
+    model (``spec5.instrument.bgs_etc.compute_bgs_snr``, loss<1).
 
     Parameters
     ----------
-    m : float or array-like
-        Source AB magnitude(s).
+    m : ndarray, shape (N,)
+        Source AB magnitude(s). Must already be a 1-D array (callers handle
+        scalar/array normalisation).
     nexp : int
         Number of exposures.
     texp : float
         Total exposure time in seconds (summed over all sub-exposures).
     fiber_diameter : {107, 120}
         Spec-S5 fiber diameter in microns. 107 µm is the baseline design.
+    aperture_loss_s5, aperture_loss_d : float or array-like, shape () or (N,)
+        Fraction of the source's total flux captured by the Spec-S5 / DESI
+        fiber respectively (1.0 = point source, fully captured). Applied to
+        the source photon counts only — sky photon counts fill the whole
+        fiber aperture regardless of source compactness.
 
     Returns
     -------
     dict
-        Keys: ``lam``, ``lam_t``, ``ph_s5_lam``, ``ph_d_lam``,
-        ``snr_s5_lam``, ``snr_d_lam``, ``ph_s5_t``, ``ph_d_t``,
-        ``snr_s5_t``, ``snr_d_t``, ``VRAD_ERR``,
-        ``fiber_diameter``, ``abmag``, ``exptime``, ``nexp``.
-        For scalar ``m`` shapes are ``(L,)`` / ``(fine_L,)``; for array
-        ``m`` of length N shapes are ``(N, L)`` / ``(N, fine_L)``.
+        Keys: ``lam_t``, ``ph_s5``, ``ph_d``, ``noise_s5``, ``noise_d``,
+        ``snr_s5``, ``snr_d`` (all shape ``(N, L)``), ``fiber_diameter``,
+        ``df_s5``, ``df_d`` (fiber angular diameters in arcsec).
     """
-    scalar_input = np.ndim(m) == 0
-    m = np.atleast_1d(np.asarray(m, dtype=float))  # (N,)
-
     lam_t = np.array([360., 375., 400., 450., 500., 550.,
                       600., 650., 700., 750., 800., 850., 900., 980.]) * 10.0  # Å
 
@@ -96,17 +103,69 @@ def compute_snr(m, nexp, texp, fiber_diameter=107):
     flam = fnu * (_CLIGHT * 1e8) / lam_t**2                 # (N, L)
     phot = flam / (_HPLANCK * _CLIGHT * 1e8 / lam_t)        # (N, L)
 
+    # Fraction of source flux captured by each fiber — (N, 1), broadcasts
+    # against phot (N, L). Scalar input (point source) broadcasts to all N.
+    loss_s5 = np.atleast_1d(np.asarray(aperture_loss_s5, dtype=float))[:, None]
+    loss_d  = np.atleast_1d(np.asarray(aperture_loss_d,  dtype=float))[:, None]
+
     # DESI — noise (L,) broadcasts against phot (N, L)
-    ph_d    = phot  * pi * (d_d  / 2) ** 2 * texp * thru_d  # (N, L)
+    ph_d    = phot  * loss_d  * pi * (d_d  / 2) ** 2 * texp * thru_d  # (N, L)
     phsky_d = phsky * pi * (d_d  / 2) ** 2 * texp * pi * (df_d  / 2) ** 2 * thru_d_sky
     noise_d = np.sqrt(ph_d + phsky_d  + nexp * noise_ccd_d  ** 2)  # (N, L)
     snr_d   = ph_d  / noise_d                                # (N, L)
 
     # Spec-S5
-    ph_s5    = phot  * pi * (d_s5 / 2) ** 2 * texp * thru_s5  # (N, L)
+    ph_s5    = phot  * loss_s5 * pi * (d_s5 / 2) ** 2 * texp * thru_s5  # (N, L)
     phsky_s5 = phsky * pi * (d_s5 / 2) ** 2 * texp * pi * (df_s5 / 2) ** 2 * thru_s5_sky
     noise_s5 = np.sqrt(ph_s5 + phsky_s5 + nexp * noise_ccd_s5 ** 2)   # (N, L)
     snr_s5   = ph_s5 / noise_s5                                # (N, L)
+
+    return {
+        "lam_t":          lam_t,
+        "ph_s5":          ph_s5,
+        "ph_d":           ph_d,
+        "noise_s5":       noise_s5,
+        "noise_d":        noise_d,
+        "snr_s5":         snr_s5,
+        "snr_d":          snr_d,
+        "fiber_diameter": fiber_diameter,
+        "df_s5":          df_s5,
+        "df_d":           df_d,
+    }
+
+
+def compute_snr(m, nexp, texp, fiber_diameter=107):
+    """
+    Compute photon counts and SNR for DESI and Spec-S5 instruments.
+
+    Parameters
+    ----------
+    m : float or array-like
+        Source AB magnitude(s).
+    nexp : int
+        Number of exposures.
+    texp : float
+        Total exposure time in seconds (summed over all sub-exposures).
+    fiber_diameter : {107, 120}
+        Spec-S5 fiber diameter in microns. 107 µm is the baseline design.
+
+    Returns
+    -------
+    dict
+        Keys: ``lam``, ``lam_t``, ``ph_s5_lam``, ``ph_d_lam``,
+        ``snr_s5_lam``, ``snr_d_lam``, ``ph_s5_t``, ``ph_d_t``,
+        ``snr_s5_t``, ``snr_d_t``, ``VRAD_ERR``,
+        ``fiber_diameter``, ``abmag``, ``exptime``, ``nexp``.
+        For scalar ``m`` shapes are ``(L,)`` / ``(fine_L,)``; for array
+        ``m`` of length N shapes are ``(N, L)`` / ``(N, fine_L)``.
+    """
+    scalar_input = np.ndim(m) == 0
+    m = np.atleast_1d(np.asarray(m, dtype=float))  # (N,)
+
+    core  = _photon_counting_core(m, nexp, texp, fiber_diameter)
+    lam_t = core["lam_t"]
+    ph_s5, ph_d   = core["ph_s5"],  core["ph_d"]
+    snr_s5, snr_d = core["snr_s5"], core["snr_d"]
 
     # Fine wavelength grid
     lam = np.linspace(lam_t.min(), lam_t.max(), 1001)

@@ -6,6 +6,8 @@ Functions
 galactocentric_to_observed  : Galactocentric phase-space + luminosity → on-sky observables
 observe_with_spec5           : On-sky observables → mock Spec-S5 measurements with noise
 observe_with_desi            : On-sky observables → mock DESI MWS measurements with noise
+observe_bgs_with_spec5       : BGS galaxy catalog → mock Spec-S5 redshift recovery
+observe_bgs_with_desi        : BGS galaxy catalog → mock DESI redshift recovery
 """
 
 import numpy as np
@@ -13,6 +15,7 @@ import astropy.coordinates as coord
 import astropy.units as u
 from astropy.coordinates import CartesianDifferential, CartesianRepresentation
 
+from .bgs_etc import compute_redshift_success
 from .stellar_etc import compute_measurement_errors
 
 # ---------------------------------------------------------------------------
@@ -497,3 +500,124 @@ def observe_with_desi(stars, star_type='giant', pm_model='gaia_dr5',
         out['dist_err_frac']   = dist_err_frac
         out['snr_median_zarm'] = snr
         return out
+
+
+# ---------------------------------------------------------------------------
+# BGS mock redshift recovery
+# ---------------------------------------------------------------------------
+
+def _observe_bgs(galaxies, instrument, bgs_type, nexp, texp,
+                  fiber_diameter, sersic_n, seed):
+    try:
+        import pandas as pd
+        is_dataframe = isinstance(galaxies, pd.DataFrame)
+    except ImportError:
+        is_dataframe = False
+
+    r_fiber_mag = np.asarray(galaxies['r_fiber_mag'],       dtype=float)
+    hlr         = np.asarray(galaxies['half_light_radius'], dtype=float)
+    redshift    = np.asarray(galaxies['redshift'],          dtype=float)
+
+    n = len(r_fiber_mag)
+    rng = np.random.default_rng(seed)
+
+    valid = np.isfinite(r_fiber_mag) & np.isfinite(hlr)
+    success_prob = np.full(n, np.nan)
+    if valid.any():
+        success_prob[valid] = compute_redshift_success(
+            r_fiber_mag[valid], instrument=instrument, bgs_type=bgs_type,
+            nexp=nexp, texp=texp, fiber_diameter=fiber_diameter,
+            half_light_radius=hlr[valid], sersic_n=sersic_n,
+        )
+
+    draw = rng.uniform(0.0, 1.0, n)
+    success = valid & (draw < success_prob)
+    redshift_obs = np.where(success, redshift, np.nan)
+
+    if is_dataframe:
+        import pandas as pd
+        return pd.DataFrame({
+            'redshift_obs':  redshift_obs,
+            'success':       success,
+            'success_prob':  success_prob,
+        })
+    else:
+        out = np.empty(n, dtype=[
+            ('redshift_obs', 'f8'),
+            ('success',      'bool'),
+            ('success_prob', 'f8'),
+        ])
+        out['redshift_obs'] = redshift_obs
+        out['success']      = success
+        out['success_prob'] = success_prob
+        return out
+
+
+def observe_bgs_with_spec5(galaxies, bgs_type='bright', nexp=1, texp=180.0,
+                            fiber_diameter=107, sersic_n=1.0, seed=None):
+    """
+    Generate mock Spec-S5 BGS redshift-recovery outcomes.
+
+    Draws a Bernoulli success/failure outcome per galaxy from
+    :func:`spec5.instrument.bgs_etc.compute_redshift_success`, following
+    DESI's own binary redshift-recovery definition (Hahn et al. 2023) —
+    there is no continuous redshift-error model (see docs/bgs_plan.md).
+
+    Parameters
+    ----------
+    galaxies : numpy structured array or pandas DataFrame
+        Must contain columns/fields:
+            ``r_fiber_mag``       — r-band AB magnitude in DESI's reference
+                                     1.51" fiber-flux convention (NaN → all
+                                     outputs NaN)
+            ``half_light_radius`` — galaxy half-light radius, arcsec
+            ``redshift``          — true redshift
+    bgs_type : {'bright'}
+        BGS target class (default: 'bright'; only class currently calibrated).
+    nexp : int
+        Number of exposures (default: 1).
+    texp : float
+        Total exposure time in seconds (default: 180 s, the Hahn et al.
+        2023 BGS Bright nominal single-visit exposure).
+    fiber_diameter : {107, 120}
+        Spec-S5 fiber diameter in microns (default: 107).
+    sersic_n : float
+        Sersic index of the assumed light profile (default: 1.0).
+    seed : int or None
+        Random seed for reproducibility (default: None).
+
+    Returns
+    -------
+    numpy structured array or pandas DataFrame
+        Same type as ``galaxies``, with columns:
+            ``redshift_obs`` — true redshift on success, NaN on failure
+            ``success``      — bool, whether redshift recovery succeeded
+            ``success_prob`` — P(success) used to draw the outcome
+    """
+    return _observe_bgs(galaxies, instrument='spec5', bgs_type=bgs_type,
+                         nexp=nexp, texp=texp, fiber_diameter=fiber_diameter,
+                         sersic_n=sersic_n, seed=seed)
+
+
+def observe_bgs_with_desi(galaxies, bgs_type='bright', nexp=1, texp=180.0,
+                           fiber_diameter=107, sersic_n=1.0, seed=None):
+    """
+    Generate mock DESI BGS redshift-recovery outcomes.
+
+    Mirrors the call signature of ``observe_bgs_with_spec5`` exactly, using
+    ``instrument='desi'`` so ``compute_redshift_success`` evaluates the
+    DR1-calibrated curve directly rather than translating through the
+    Spec-S5 mirror/aperture SNR ratio.
+
+    Parameters
+    ----------
+    See ``observe_bgs_with_spec5``.
+
+    Returns
+    -------
+    numpy structured array or pandas DataFrame
+        Same type and columns as ``observe_bgs_with_spec5``.
+    """
+    return _observe_bgs(galaxies, instrument='desi', bgs_type=bgs_type,
+                         nexp=nexp, texp=texp, fiber_diameter=fiber_diameter,
+                         sersic_n=sersic_n, seed=seed)
