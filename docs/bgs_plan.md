@@ -10,7 +10,7 @@ Author: kadrlica (plan drafted with Claude)
 `observe_bgs_with_spec5`/`observe_bgs_with_desi` in `mock_observations.py`,
 calibration data (`spec5/instrument/data/bgs_redshift_success_bright.csv`),
 tests (`tests/test_bgs_etc.py`, `tests/test_bgs_mock_observations.py`), a
-README section, and a demo notebook (`notebooks/BGS_SNR_ETC.ipynb`).
+README section, and a demo notebook (`notebooks/bgs_snr_etc.ipynb`).
 **Not yet done**: BGS Faint calibration, and validation against a mock BGS
 catalog with a realistic (non-toy) half-light-radius distribution (see §4
 and §3 item 5 below).
@@ -202,7 +202,7 @@ Mirrors the existing module structure/conventions in `spec5/instrument/`.
    `tests/test_redshift_success.py`, following the fixed-value regression
    pattern in `test_compute_snr.py` (hardcoded expected SNR/success-rate at a
    few reference magnitudes/exposure times).
-5. **Notebook**: `notebooks/BGS_SNR_ETC.ipynb`, mirroring the structure of
+5. **Notebook**: `notebooks/bgs_snr_etc.ipynb`, mirroring the structure of
    `SpecS5_SNR_ETC.ipynb` / `mock_observations_demo_with_desi.ipynb` — show
    SNR_r vs. fiber mag, the redshift-success curve, a mock BGS catalog
    observation, and a Spec-S5 vs. DESI comparison.
