@@ -193,34 +193,36 @@ r-arm SNR Spec-S5 achieves, then evaluates the curve at m′:
   photons for galaxies and point sources alike.
 
 The result is m′ − m ≈ −0.72 to −0.76 mag at the default hlr = 1.5″, 107 µm.
+This is probably about 0.23 mag too large; see the throughput-table item under
+"Known limitations".
 
 Known limitations:
 
-- **PSF in the throughput tables (open question).** The tables don't state their
-  PSF, and the code assumes a 1.1″ Gaussian for both instruments. The tables
-  don't obviously agree with that. A 1.1″ Gaussian predicts a Spec-S5/DESI
-  point-source capture ratio of 0.62 (1.02″ vs 1.51″ fibers), but
-  `(thru/thru_sky)` gives ~0.98 across the r-arm. That ratio may also absorb
-  terms other than seeing. The depth gain is sensitive to the answer (hlr = 1.5″,
-  n = 1, 180 s, with DESI held at 1.1″ and Spec-S5 observed at its table PSF):
+- **Throughput tables (known issue, fix planned for a follow-up PR).** The
+  tables come from the Spec-S5 Systems Engineering Throughput Budget, SS5-0022
+  v1 (P. Jelinsky, 2025):
+  - **`thru_s5`:** a point-source throughput for a Moffat PSF (β = 3.5,
+    0.96″ FWHM, g band) in the 1.02″ fiber. The 0.96″ is atmospheric seeing
+    only; telescope blur and fiber offsets are separate terms.
+  - **`thru_d`:** the budget's DESI *galaxy* curve, not a point-source one. The
+    budget's DESI star curve is the galaxy curve × 1.24.
 
-  | Spec-S5 table PSF | Source of the estimate | Depth gain |
-  |---|---|---|
-  | 1.1″ | current assumption | 0.72 mag |
-  | 0.84″ | 120/107 µm throughput ratio | 0.46 mag |
-  | 0.76″ | S5/DESI ratio, holding DESI at 1.1″ | 0.37 mag |
-
-  Taken together, the two ratios would imply about 0.84″ for Spec-S5 and 1.23″
-  for DESI. Until the authors of the throughput curves confirm the PSF, treat
-  0.72 mag as an upper bound for extended galaxies, and `_TABLE_SEEING_FWHM` as
-  an assumption.
+  The code treats `thru_d` as point-source, so DESI is understated and the
+  quoted depth gains are probably about 0.23 mag too high. At hlr = 1.5″ that
+  means roughly 0.49 mag instead of 0.72 mag; this is a sky-limited scaling
+  estimate, not a rerun. `_TABLE_SEEING_FWHM` stays at 1.1″ as a Gaussian
+  stand-in for the table PSF. A Gaussian would need about 1.19″ to match the
+  table's Spec-S5 fiber acceptance of 0.40, and 0.96″ would make it worse
+  (0.54). A Moffat model is the proper fix.
 - **Faint plateau under translation.** The curve's ~0.4 plateau is unlikely to
   be SNR-driven, but the translation shifts it in magnitude anyway. At the
   default settings it extends to about r_fiber = 23.6 for Spec-S5, where it steps
   to 0.
-- **Sky level.** The tabulated sky is ~21.3 AB mag/arcsec² at 6500 Å, against
-  Hahn et al.'s nominal r = 21.07. It's the same for both instruments, so
-  `texp` means dark-time effective exposure. For real exposures under brighter
+- **Sky level.** The tabulated sky is the moonless-continuum model in SS5-0022
+  v1, cited there to Hanuschik (2003, A&A 407, 1157), a sky atlas from the VLT
+  at Paranal. It is not a measured KPNO dark sky. It is ~21.3 AB mag/arcsec²
+  at 6500 Å, against Hahn et al.'s nominal r = 21.07. It's the same for both
+  instruments, so `texp` means an effective exposure under that sky. For real exposures under brighter
   sky, use `sky_scale`, which scales the sky grey and has no moon-sky spectral
   shape.
 - **Single SNR metric.** The translation uses continuum SNR only, with no

@@ -46,9 +46,11 @@ _DESI_REF_NEXP = 1
 _DESI_REF_TEXP = 180.0         # s
 _NOMINAL_SEEING_FWHM = 1.1     # arcsec
 
-# Gaussian seeing assumed for the point-source fiber loss built into the
-# throughput tables. The tables don't state their PSF, so this is an assumption;
-# see "Known limitations" in docs/bgs_path_b_results.md.
+# Gaussian stand-in for the PSF behind the fiber loss built into the throughput
+# tables. The Spec-S5 table assumes a Moffat PSF (beta 3.5, 0.96" FWHM
+# atmospheric seeing) plus instrument blur and fiber offsets (SS5-0022 v1). A
+# 1.1" Gaussian approximates its fiber acceptance better than 0.96" does; see
+# "Known limitations" in docs/bgs_path_b_results.md.
 _TABLE_SEEING_FWHM = 1.1       # arcsec
 
 # Calibration validity limits: the r_fiber < 22.9 survey cut (Hahn et al. 2023
@@ -116,9 +118,10 @@ def compute_bgs_snr(r_fiber_mag, nexp, texp, fiber_diameter=107,
         relative to the seeing assumed for the throughput tables, so worse
         seeing lowers source photons for galaxies and point sources alike.
     sky_scale : float
-        Multiplier on the tabulated sky (default: 1.0). The table is
-        dark-time sky, about r = 21.3 AB mag/arcsec². With the default,
-        ``texp`` is therefore a dark-time effective exposure, the same
+        Multiplier on the tabulated sky (default: 1.0). The table is a
+        moonless-continuum sky model (Hanuschik 2003, via SS5-0022 v1), about
+        r = 21.3 AB mag/arcsec². With the default, ``texp`` is therefore an
+        effective exposure under that sky, the same
         sense as DESI's EFFTIME. Set above 1 to treat ``texp`` as a real
         exposure under brighter sky, e.g. ``10**(0.4 * (21.3 - mu_r))`` for
         a sky of ``mu_r`` mag/arcsec² (this scales the spectrum grey).

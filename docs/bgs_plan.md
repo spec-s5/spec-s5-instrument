@@ -5,7 +5,8 @@ branch `bgs`
 Author: kadrlica (plan drafted with Claude)
 
 **Implemented**: `spec5/instrument/galaxy_photometry.py`
-(`fiber_capture_fraction`), `spec5/instrument/bgs_etc.py`
+(`seeing_capture_fraction`, `point_source_capture_fraction`;
+`fiber_capture_fraction` is the no-seeing case), `spec5/instrument/bgs_etc.py`
 (`compute_bgs_snr`, `compute_redshift_success`),
 `observe_bgs_with_spec5`/`observe_bgs_with_desi` in `mock_observations.py`,
 calibration data (`spec5/instrument/data/bgs_redshift_success_bright.csv`),
@@ -182,9 +183,10 @@ Mirrors the existing module structure/conventions in `spec5/instrument/`.
      correction from §2.3 step 5 before computing captured photon counts.
    - `compute_redshift_success(m_fiber, nexp, texp, fiber_diameter=107,
      half_light_radius=1.5, bgs_type='bright')`: computes SNR_r via
-     `compute_bgs_snr`, then evaluates the calibrated logistic/sigmoid
-     `P(success | SNR_r)` from a tabulated data file (loaded via
-     `scipy.interpolate`, same pattern as `dist_err_vs_snr_*.csv`).
+     `compute_bgs_snr`, finds the DESI-equivalent magnitude at which DESI
+     reaches that SNR, and evaluates the DR1 success curve vs. r_fiber
+     there (tabulated data file, isotonic fit with PCHIP interpolation).
+     *As implemented; the original plan was a logistic `P(success | SNR_r)`.*
 2. **Data files**: `spec5/instrument/data/bgs_redshift_success_bright.csv` —
    copy of `research/bgs_path_b/bgs_redshift_success_extended_vs_rfibermag.csv`
    (success rate vs. r_fiber mag, extended-source-only, §2.5) plus a

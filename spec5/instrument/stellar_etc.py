@@ -53,13 +53,17 @@ def _photon_counting_core(m, nexp, texp, fiber_diameter=107,
         Spec-S5 fiber diameter in microns. 107 µm is the baseline design.
     source_scale_s5, source_scale_d : float or array-like, shape () or (N,)
         Multiplier on the source photon counts for Spec-S5 / DESI. The
-        ``thru_s5`` / ``thru_d`` tables are point-source throughputs that
-        already include fiber losses, so 1.0 means a point source of AB
-        magnitude ``m``. This is not a capture fraction and may exceed 1;
-        see ``bgs_etc._fiber_source_scale``. Sky photons are unaffected.
+        throughput tables already include fiber losses and come from the
+        Spec-S5 throughput budget, SS5-0022 v1. ``thru_s5`` is a point-source
+        throughput, so 1.0 means a point source of AB magnitude ``m``.
+        ``thru_d`` is that budget's DESI *galaxy* curve, so it understates a
+        DESI point source (the budget's DESI star curve is 1.24x higher).
+        This is not a capture fraction and may exceed 1; see
+        ``bgs_etc._fiber_source_scale``. Sky photons are unaffected.
     sky_scale : float
         Multiplier on the tabulated sky spectrum, applied to both
-        instruments (default 1.0, the table's dark-time sky).
+        instruments (default 1.0, the table's moonless-continuum sky from
+        Hanuschik 2003, via SS5-0022 v1).
 
     Returns
     -------

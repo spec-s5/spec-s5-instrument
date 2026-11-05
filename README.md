@@ -135,12 +135,13 @@ losses. Predicting Spec-S5's redshift-success probability (`instrument='spec5'`)
 finds the magnitude at which DESI, at its reference 1x180 s effective exposure in
 nominal conditions, reaches the SNR Spec-S5 achieves, then evaluates the
 DESI-calibrated curve there. `seeing_fwhm` and `sky_scale` set Spec-S5's observing
-conditions; by default the tabulated dark sky applies, so `texp` is a dark-time
-effective exposure. Radii below 1" raise a warning because they fall outside the
-calibration sample, and magnitudes past the `r_fiber < 22.9` sample limit return 0.
-The PSF assumed for the throughput tables is unconfirmed and strongly affects the
-Spec-S5 depth gain for extended galaxies (0.72 mag at the assumed 1.1", about 0.4 mag
-at the PSF the tables may imply); see `docs/bgs_path_b_results.md`.
+conditions; by default the tabulated moonless-continuum sky applies, so `texp` is
+an effective exposure under that sky. Radii below 1" raise a warning because they
+fall outside the calibration sample, and magnitudes past the `r_fiber < 22.9`
+sample limit return 0. Known issue: the DESI throughput table is a galaxy curve
+treated as point-source, so the quoted Spec-S5 depth gains are probably about
+0.2 mag too high. A fix is planned for a follow-up PR; see
+`docs/bgs_path_b_results.md`.
 
 Mock observations (drawing a per-galaxy Bernoulli success outcome) are
 available via `observe_bgs_with_spec5` / `observe_bgs_with_desi` in
