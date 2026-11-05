@@ -96,6 +96,61 @@ The fractional distance error as a function of spectroscopic SNR is taken from
 dwarfs.  The interpolation uses cubic splines; values outside the tabulated SNR
 range are clamped to the nearest boundary value.
 
+## BGS redshift recovery
+
+```python
+from spec5.instrument.bgs_etc import compute_bgs_snr, compute_redshift_success
+
+# r-arm continuum SNR for a BGS galaxy (r_fiber_mag in the FIBERFLUX_R
+# convention: 1.5" fiber, 1" seeing), half_light_radius in arcsec
+snr = compute_bgs_snr(r_fiber_mag=19.5, nexp=1, texp=180.0, half_light_radius=1.5)
+print(snr['snr_r_s5'], snr['snr_r_d'])
+
+# Probability of a successful DESI/Spec-S5 redshift measurement
+p_spec5 = compute_redshift_success(19.5, instrument='spec5')
+p_desi  = compute_redshift_success(19.5, instrument='desi')
+```
+
+Redshift recovery is modeled as a **binary** success/failure outcome,
+using the Hahn et al. 2023 criteria that don't need a deep comparison spectrum:
+`ZWARN==0 & DELTACHI2>40 & SPECTYPE=='GALAXY'`. There is no continuous
+redshift-error model — DESI's own pipeline doesn't publish one either, since
+Δχ² is a detection statistic, not a precision metric.
+
+The success-rate-vs-`r_fiber_mag` relation is empirically derived from the
+public DESI DR1 BGS_BRIGHT LSS catalog (iron reduction, v1.5), restricted to
+extended sources (`SHAPE_R > 1.0"`) to exclude point-source/compact
+contaminants that Redrock correctly fails to classify as galaxies — see
+`docs/bgs_path_b_results.md` for the full derivation, including why a naive
+fit (without that restriction) is misleadingly non-monotonic. Only the
+**BGS Bright** class is currently calibrated (`bgs_type='faint'` raises
+`ValueError`; see `docs/bgs_plan.md`).
+
+For extended sources, only part of the galaxy's light falls within the fiber.
+This is modeled with a Sersic profile convolved with Gaussian seeing
+(`spec5.instrument.galaxy_photometry.seeing_capture_fraction`), by default an
+exponential disk (`sersic_n=1.0`) in 1.1" seeing, and is applied relative to a
+point source because the throughput tables already include point-source fiber
+losses. Predicting Spec-S5's redshift-success probability (`instrument='spec5'`)
+finds the magnitude at which DESI, at its reference 1x180 s effective exposure in
+nominal conditions, reaches the SNR Spec-S5 achieves, then evaluates the
+DESI-calibrated curve there. `seeing_fwhm` and `sky_scale` set Spec-S5's observing
+conditions; by default the tabulated moonless-continuum sky applies, so `texp` is
+an effective exposure under that sky. Radii below 1" raise a warning because they
+fall outside the calibration sample, and magnitudes past the `r_fiber < 22.9`
+sample limit return 0. Known issue: the DESI throughput table is a galaxy curve
+treated as point-source, so the quoted Spec-S5 depth gains are probably about
+0.2 mag too high. A fix is planned for a follow-up PR; see
+`docs/bgs_path_b_results.md`.
+
+Mock observations (drawing a per-galaxy Bernoulli success outcome) are
+available via `observe_bgs_with_spec5` / `observe_bgs_with_desi` in
+`spec5.instrument.mock_observations`, mirroring the stellar
+`observe_with_spec5` / `observe_with_desi` pattern.
+
+See `docs/bgs_plan.md` for the full research/implementation plan and
+`research/bgs_path_b/` for the calibration scripts and derived data.
+
 ## Running the tests
 
 ```bash

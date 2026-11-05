@@ -24,6 +24,126 @@ _CLIGHT  = 2.99792458e10    # cm/s
 # Package data directory
 _DATA_DIR = Path(__file__).parent / "data"
 
+# Fiber angular diameters, arcsec. Spec-S5 is keyed by physical diameter (µm).
+_SPEC5_FIBER_ANGULAR_DIAMETER = {107: 1.02, 120: 1.144}
+_DESI_FIBER_ANGULAR_DIAMETER = 1.51
+
+
+def _photon_counting_core(m, nexp, texp, fiber_diameter=107,
+                           source_scale_s5=1.0, source_scale_d=1.0,
+                           sky_scale=1.0):
+    """
+    Shared photon-counting SNR core for DESI and Spec-S5.
+
+    Computes per-Å photon counts and SNR at the 14 throughput-curve
+    wavelength nodes. Used by both the point-source stellar model
+    (``compute_snr``) and the extended-source BGS model
+    (``spec5.instrument.bgs_etc.compute_bgs_snr``).
+
+    Parameters
+    ----------
+    m : ndarray, shape (N,)
+        Source AB magnitude(s). Must already be a 1-D array (callers handle
+        scalar/array normalisation).
+    nexp : int
+        Number of exposures.
+    texp : float
+        Total exposure time in seconds (summed over all sub-exposures).
+    fiber_diameter : {107, 120}
+        Spec-S5 fiber diameter in microns. 107 µm is the baseline design.
+    source_scale_s5, source_scale_d : float or array-like, shape () or (N,)
+        Multiplier on the source photon counts for Spec-S5 / DESI. The
+        throughput tables already include fiber losses and come from the
+        Spec-S5 throughput budget, SS5-0022 v1. ``thru_s5`` is a point-source
+        throughput, so 1.0 means a point source of AB magnitude ``m``.
+        ``thru_d`` is that budget's DESI *galaxy* curve, so it understates a
+        DESI point source (the budget's DESI star curve is 1.24x higher).
+        This is not a capture fraction and may exceed 1; see
+        ``bgs_etc._fiber_source_scale``. Sky photons are unaffected.
+    sky_scale : float
+        Multiplier on the tabulated sky spectrum, applied to both
+        instruments (default 1.0, the table's moonless-continuum sky from
+        Hanuschik 2003, via SS5-0022 v1).
+
+    Returns
+    -------
+    dict
+        Keys: ``lam_t``, ``ph_s5``, ``ph_d``, ``noise_s5``, ``noise_d``,
+        ``snr_s5``, ``snr_d`` (all shape ``(N, L)``), ``fiber_diameter``,
+        ``df_s5``, ``df_d`` (fiber angular diameters in arcsec).
+    """
+    lam_t = np.array([360., 375., 400., 450., 500., 550.,
+                      600., 650., 700., 750., 800., 850., 900., 980.]) * 10.0  # Å
+
+    if fiber_diameter == 107:
+        thru_s5 = np.array([0.0373, 0.0526, 0.0740, 0.1122, 0.1089, 0.1015,
+                             0.1169, 0.1250, 0.1237, 0.1138, 0.1368, 0.1378, 0.1387, 0.0895])
+        thru_s5_sky = np.array([0.0959, 0.1343, 0.1871, 0.2813, 0.2716, 0.2529,
+                                 0.2920, 0.3133, 0.3109, 0.2865, 0.3444, 0.3471, 0.3497, 0.2261])
+    elif fiber_diameter == 120:
+        thru_s5 = np.array([0.0422, 0.0596, 0.0837, 0.1269, 0.1231, 0.1147,
+                             0.1322, 0.1414, 0.1400, 0.1288, 0.1548, 0.1560, 0.1569, 0.1012])
+        thru_s5_sky = np.array([0.0959, 0.1343, 0.1871, 0.2813, 0.2716, 0.2529,
+                                 0.2920, 0.3133, 0.3109, 0.2865, 0.3444, 0.3471, 0.3497, 0.2261])
+    else:
+        raise ValueError("fiber_diameter must be 107 (baseline) or 120 microns.")
+
+    thru_d = np.array([0.0253, 0.0409, 0.0623, 0.0863, 0.0940, 0.0933,
+                       0.1117, 0.1216, 0.1231, 0.1155, 0.1433, 0.1456, 0.1440, 0.0845])
+    thru_d_sky = np.array([0.0631, 0.1017, 0.1537, 0.2113, 0.2284, 0.2262,
+                            0.2716, 0.2976, 0.3033, 0.2859, 0.3558, 0.3619, 0.3586, 0.2107])
+    df_s5 = _SPEC5_FIBER_ANGULAR_DIAMETER[fiber_diameter]
+    df_d = _DESI_FIBER_ANGULAR_DIAMETER
+
+    d_d  = 3.797e2   # cm  (DESI)
+    d_s5 = 6.0e2     # cm  (Spec-S5)
+
+    # Sky spectrum (erg/s/cm²/Å/arcsec²) — magnitude-independent, shape (L,)
+    flamsky = np.array([1.69e-17, 1.50e-17, 1.22e-17, 1.59e-17, 1.03e-17, 1.02e-17,
+                        9.59e-18, 7.89e-18, 8.02e-18, 7.73e-18, 7.76e-18, 7.73e-18,
+                        5.86e-18, 8.00e-18])
+    phsky = sky_scale * flamsky / (_HPLANCK * _CLIGHT * 1e8 / lam_t)   # photons/s/cm²/Å/arcsec²
+
+    noise_ccd_d  = np.array([3.35] * 6 + [2.72] * 8)
+    noise_ccd_s5 = np.array([1.18] * 6 + [2.72] * 8)
+
+    pi = np.pi
+
+    # Source: AB mag → photon flux — broadcast m (N,1) against lam_t (L,) → (N, L)
+    fnu  = 10 ** (-0.4 * (m[:, None] + 48.6))              # (N, 1)
+    flam = fnu * (_CLIGHT * 1e8) / lam_t**2                 # (N, L)
+    phot = flam / (_HPLANCK * _CLIGHT * 1e8 / lam_t)        # (N, L)
+
+    # Source scaling — (N, 1), broadcasts against phot (N, L). Scalar input
+    # (point source) broadcasts to all N.
+    scale_s5 = np.atleast_1d(np.asarray(source_scale_s5, dtype=float))[:, None]
+    scale_d  = np.atleast_1d(np.asarray(source_scale_d,  dtype=float))[:, None]
+
+    # DESI — noise (L,) broadcasts against phot (N, L)
+    ph_d    = phot  * scale_d  * pi * (d_d  / 2) ** 2 * texp * thru_d  # (N, L)
+    phsky_d = phsky * pi * (d_d  / 2) ** 2 * texp * pi * (df_d  / 2) ** 2 * thru_d_sky
+    noise_d = np.sqrt(ph_d + phsky_d  + nexp * noise_ccd_d  ** 2)  # (N, L)
+    snr_d   = ph_d  / noise_d                                # (N, L)
+
+    # Spec-S5
+    ph_s5    = phot  * scale_s5 * pi * (d_s5 / 2) ** 2 * texp * thru_s5  # (N, L)
+    phsky_s5 = phsky * pi * (d_s5 / 2) ** 2 * texp * pi * (df_s5 / 2) ** 2 * thru_s5_sky
+    noise_s5 = np.sqrt(ph_s5 + phsky_s5 + nexp * noise_ccd_s5 ** 2)   # (N, L)
+    snr_s5   = ph_s5 / noise_s5                                # (N, L)
+
+    return {
+        "lam_t":          lam_t,
+        "ph_s5":          ph_s5,
+        "ph_d":           ph_d,
+        "noise_s5":       noise_s5,
+        "noise_d":        noise_d,
+        "snr_s5":         snr_s5,
+        "snr_d":          snr_d,
+        "fiber_diameter": fiber_diameter,
+        "df_s5":          df_s5,
+        "df_d":           df_d,
+    }
+
 
 def compute_snr(m, nexp, texp, fiber_diameter=107):
     """
@@ -53,60 +173,10 @@ def compute_snr(m, nexp, texp, fiber_diameter=107):
     scalar_input = np.ndim(m) == 0
     m = np.atleast_1d(np.asarray(m, dtype=float))  # (N,)
 
-    lam_t = np.array([360., 375., 400., 450., 500., 550.,
-                      600., 650., 700., 750., 800., 850., 900., 980.]) * 10.0  # Å
-
-    if fiber_diameter == 107:
-        thru_s5 = np.array([0.0373, 0.0526, 0.0740, 0.1122, 0.1089, 0.1015,
-                             0.1169, 0.1250, 0.1237, 0.1138, 0.1368, 0.1378, 0.1387, 0.0895])
-        thru_s5_sky = np.array([0.0959, 0.1343, 0.1871, 0.2813, 0.2716, 0.2529,
-                                 0.2920, 0.3133, 0.3109, 0.2865, 0.3444, 0.3471, 0.3497, 0.2261])
-        df_s5 = 1.02   # arcsec fiber diameter
-    elif fiber_diameter == 120:
-        thru_s5 = np.array([0.0422, 0.0596, 0.0837, 0.1269, 0.1231, 0.1147,
-                             0.1322, 0.1414, 0.1400, 0.1288, 0.1548, 0.1560, 0.1569, 0.1012])
-        thru_s5_sky = np.array([0.0959, 0.1343, 0.1871, 0.2813, 0.2716, 0.2529,
-                                 0.2920, 0.3133, 0.3109, 0.2865, 0.3444, 0.3471, 0.3497, 0.2261])
-        df_s5 = 1.144  # arcsec fiber diameter
-    else:
-        raise ValueError("fiber_diameter must be 107 (baseline) or 120 microns.")
-
-    thru_d = np.array([0.0253, 0.0409, 0.0623, 0.0863, 0.0940, 0.0933,
-                       0.1117, 0.1216, 0.1231, 0.1155, 0.1433, 0.1456, 0.1440, 0.0845])
-    thru_d_sky = np.array([0.0631, 0.1017, 0.1537, 0.2113, 0.2284, 0.2262,
-                            0.2716, 0.2976, 0.3033, 0.2859, 0.3558, 0.3619, 0.3586, 0.2107])
-    df_d = 1.51   # arcsec
-
-    d_d  = 3.797e2   # cm  (DESI)
-    d_s5 = 6.0e2     # cm  (Spec-S5)
-
-    # Sky spectrum (erg/s/cm²/Å/arcsec²) — magnitude-independent, shape (L,)
-    flamsky = np.array([1.69e-17, 1.50e-17, 1.22e-17, 1.59e-17, 1.03e-17, 1.02e-17,
-                        9.59e-18, 7.89e-18, 8.02e-18, 7.73e-18, 7.76e-18, 7.73e-18,
-                        5.86e-18, 8.00e-18])
-    phsky = flamsky / (_HPLANCK * _CLIGHT * 1e8 / lam_t)   # photons/s/cm²/Å/arcsec²
-
-    noise_ccd_d  = np.array([3.35] * 6 + [2.72] * 8)
-    noise_ccd_s5 = np.array([1.18] * 6 + [2.72] * 8)
-
-    pi = np.pi
-
-    # Source: AB mag → photon flux — broadcast m (N,1) against lam_t (L,) → (N, L)
-    fnu  = 10 ** (-0.4 * (m[:, None] + 48.6))              # (N, 1)
-    flam = fnu * (_CLIGHT * 1e8) / lam_t**2                 # (N, L)
-    phot = flam / (_HPLANCK * _CLIGHT * 1e8 / lam_t)        # (N, L)
-
-    # DESI — noise (L,) broadcasts against phot (N, L)
-    ph_d    = phot  * pi * (d_d  / 2) ** 2 * texp * thru_d  # (N, L)
-    phsky_d = phsky * pi * (d_d  / 2) ** 2 * texp * pi * (df_d  / 2) ** 2 * thru_d_sky
-    noise_d = np.sqrt(ph_d + phsky_d  + nexp * noise_ccd_d  ** 2)  # (N, L)
-    snr_d   = ph_d  / noise_d                                # (N, L)
-
-    # Spec-S5
-    ph_s5    = phot  * pi * (d_s5 / 2) ** 2 * texp * thru_s5  # (N, L)
-    phsky_s5 = phsky * pi * (d_s5 / 2) ** 2 * texp * pi * (df_s5 / 2) ** 2 * thru_s5_sky
-    noise_s5 = np.sqrt(ph_s5 + phsky_s5 + nexp * noise_ccd_s5 ** 2)   # (N, L)
-    snr_s5   = ph_s5 / noise_s5                                # (N, L)
+    core  = _photon_counting_core(m, nexp, texp, fiber_diameter)
+    lam_t = core["lam_t"]
+    ph_s5, ph_d   = core["ph_s5"],  core["ph_d"]
+    snr_s5, snr_d = core["snr_s5"], core["snr_d"]
 
     # Fine wavelength grid
     lam = np.linspace(lam_t.min(), lam_t.max(), 1001)
