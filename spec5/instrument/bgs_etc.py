@@ -46,12 +46,17 @@ _DESI_REF_NEXP = 1
 _DESI_REF_TEXP = 180.0         # s
 _NOMINAL_SEEING_FWHM = 1.1     # arcsec
 
-# Gaussian stand-in for the PSF behind the fiber loss built into the throughput
-# tables. The Spec-S5 table assumes a Moffat PSF (beta 3.5, 0.96" FWHM
-# atmospheric seeing) plus instrument blur and fiber offsets (SS5-0022 v1). A
-# 1.1" Gaussian approximates its fiber acceptance better than 0.96" does; see
-# "Known limitations" in docs/bgs_path_b_results.md.
-_TABLE_SEEING_FWHM = 1.1       # arcsec
+# Seeing PSF. The DESI and Spec-S5 throughput budgets (DESI-347, SS5-0022)
+# model atmospheric seeing as a Moffat profile with beta = 3.5, and treat
+# instrument blur and fiber offsets as separate fixed losses. Seeing FWHMs in
+# this module are that atmospheric Moffat FWHM.
+_PSF = "moffat"
+
+# Moffat FWHM behind the point-source fiber loss built into each throughput
+# table (SS5-0022 v1.1; see stellar_etc). Spec-S5 uses 0.96", the g-band
+# median atmospheric seeing derived from DESI; DESI-347-v17 uses 1.1".
+_SPEC5_TABLE_SEEING_FWHM = 0.96   # arcsec
+_DESI_TABLE_SEEING_FWHM = 1.1     # arcsec
 
 # Calibration validity limits: the r_fiber < 22.9 survey cut (Hahn et al. 2023
 # Eq. 2) and the SHAPE_R > 1" cut applied to the calibration sample.
@@ -64,7 +69,7 @@ _BGS_SUCCESS_FILES = {
 
 
 def _fiber_source_scale(half_light_radius, fiber_angular_diameter, sersic_n, seeing_fwhm,
-                        table_seeing_fwhm=_TABLE_SEEING_FWHM):
+                        table_seeing_fwhm, psf=_PSF):
     """
     Photon-count multiplier for a galaxy of FIBERFLUX-convention magnitude,
     relative to a point source of that AB magnitude in the throughput tables.
@@ -79,10 +84,14 @@ def _fiber_source_scale(half_light_radius, fiber_angular_diameter, sersic_n, see
     This can exceed 1. A point source gets
     C(PSF_obs, D) / C(PSF_table, D) / C(PSF_LS, 1.5"): worse seeing loses light
     from the fiber, and its FIBERFLUX mag is fainter than its total mag.
+
+    PSF_obs and PSF_table have shape ``psf`` (Moffat by default, as in the
+    throughput budgets). PSF_LS is the Gaussian of the FIBERFLUX definition.
     """
     capture = seeing_capture_fraction(half_light_radius, fiber_angular_diameter,
-                                      seeing_fwhm, sersic_n=sersic_n)
-    capture_psf = point_source_capture_fraction(fiber_angular_diameter, table_seeing_fwhm)
+                                      seeing_fwhm, sersic_n=sersic_n, psf=psf)
+    capture_psf = point_source_capture_fraction(fiber_angular_diameter, table_seeing_fwhm,
+                                                psf=psf)
     capture_fiberflux = seeing_capture_fraction(half_light_radius, _FIBERFLUX_DIAMETER,
                                                 _FIBERFLUX_SEEING_FWHM, sersic_n=sersic_n)
     return capture / capture_psf / capture_fiberflux
@@ -113,10 +122,12 @@ def compute_bgs_snr(r_fiber_mag, nexp, texp, fiber_diameter=107,
         Sersic index of the assumed light profile (default: 1.0, exponential
         disk).
     seeing_fwhm : float
-        Gaussian seeing FWHM during the observation, arcsec (default: 1.1",
+        Atmospheric seeing FWHM during the observation, arcsec, for a Moffat
+        PSF with beta = 3.5 as in the throughput budgets (default: 1.1",
         DESI's nominal conditions; Hahn et al. 2023). Sets the fiber capture
-        relative to the seeing assumed for the throughput tables, so worse
-        seeing lowers source photons for galaxies and point sources alike.
+        relative to each throughput table's own PSF (0.96" for Spec-S5, 1.1"
+        for DESI), so worse seeing lowers source photons for galaxies and
+        point sources alike.
     sky_scale : float
         Multiplier on the tabulated sky (default: 1.0). The table is a
         moonless-continuum sky model (Hanuschik 2003, via SS5-0022 v1), about
@@ -148,10 +159,12 @@ def compute_bgs_snr(r_fiber_mag, nexp, texp, fiber_diameter=107,
     hlr = np.broadcast_to(
         np.atleast_1d(np.asarray(half_light_radius, dtype=float)), m.shape
     )
-    capture_s5 = seeing_capture_fraction(hlr, df_s5, seeing_fwhm, sersic_n=sersic_n)
-    capture_d  = seeing_capture_fraction(hlr, df_d,  seeing_fwhm, sersic_n=sersic_n)
-    source_scale_s5 = _fiber_source_scale(hlr, df_s5, sersic_n, seeing_fwhm)
-    source_scale_d  = _fiber_source_scale(hlr, df_d,  sersic_n, seeing_fwhm)
+    capture_s5 = seeing_capture_fraction(hlr, df_s5, seeing_fwhm, sersic_n=sersic_n, psf=_PSF)
+    capture_d  = seeing_capture_fraction(hlr, df_d,  seeing_fwhm, sersic_n=sersic_n, psf=_PSF)
+    source_scale_s5 = _fiber_source_scale(hlr, df_s5, sersic_n, seeing_fwhm,
+                                          _SPEC5_TABLE_SEEING_FWHM)
+    source_scale_d  = _fiber_source_scale(hlr, df_d,  sersic_n, seeing_fwhm,
+                                          _DESI_TABLE_SEEING_FWHM)
 
     core = _photon_counting_core(m, nexp, texp, fiber_diameter=fiber_diameter,
                                   source_scale_s5=source_scale_s5,
@@ -240,7 +253,7 @@ def _desi_equivalent_mag(snr_r, half_light_radius, sersic_n):
     with np.errstate(divide="ignore"):
         point_source_mag = np.interp(np.log10(snr_r), log_snr, mags)
     scale = _fiber_source_scale(half_light_radius, _DESI_FIBER_ANGULAR_DIAMETER,
-                                sersic_n, _NOMINAL_SEEING_FWHM)
+                                sersic_n, _NOMINAL_SEEING_FWHM, _DESI_TABLE_SEEING_FWHM)
     return point_source_mag + 2.5 * np.log10(scale)
 
 

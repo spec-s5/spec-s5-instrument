@@ -9,8 +9,9 @@ import pytest
 from scipy.optimize import brentq
 
 from spec5.instrument.bgs_etc import (
+    _DESI_TABLE_SEEING_FWHM,
     _R_FIBER_SAMPLE_LIMIT,
-    _TABLE_SEEING_FWHM,
+    _SPEC5_TABLE_SEEING_FWHM,
     _desi_equivalent_mag,
     _fiber_source_scale,
     _load_success_curve,
@@ -18,6 +19,9 @@ from spec5.instrument.bgs_etc import (
     compute_redshift_success,
 )
 from spec5.instrument.galaxy_photometry import (
+    _FWHM_TO_SIGMA,
+    _moffat_alpha,
+    _ring_kernel,
     fiber_capture_fraction,
     point_source_capture_fraction,
     seeing_capture_fraction,
@@ -27,11 +31,11 @@ MAGS = [17.5, 19.5, 20.5, 21.5]
 
 # Expected values evaluated at nexp=1, texp=180.0, half_light_radius=1.5,
 # fiber_diameter=107 (baseline Spec-S5 design).
-EXPECTED_SNR_R_S5 = {17.5: 22.480359, 19.5: 7.607643, 20.5: 3.922270, 21.5: 1.825424}
-EXPECTED_SNR_R_D  = {17.5: 17.383986, 19.5: 5.592132, 20.5: 2.769602, 21.5: 1.247007}
+EXPECTED_SNR_R_S5 = {17.5: 21.621522, 19.5: 7.247700, 20.5: 3.706574, 21.5: 1.712364}
+EXPECTED_SNR_R_D  = {17.5: 18.494695, 19.5: 6.052377, 20.5: 3.036061, 21.5: 1.381136}
 
 EXPECTED_P_DESI  = {17.5: 0.989070, 19.5: 0.986045, 20.5: 0.986045, 21.5: 0.950944}
-EXPECTED_P_SPEC5 = {17.5: 0.989070, 19.5: 0.986045, 20.5: 0.986045, 21.5: 0.984514}
+EXPECTED_P_SPEC5 = {17.5: 0.989070, 19.5: 0.986045, 20.5: 0.986045, 21.5: 0.975612}
 
 
 @pytest.mark.parametrize("m", MAGS)
@@ -59,8 +63,10 @@ def test_compute_bgs_snr_vectorised_matches_scalar():
 
 def test_point_source_capture_is_the_psf_capture():
     r = compute_bgs_snr(19.5, nexp=1, texp=180.0, half_light_radius=0.0, seeing_fwhm=1.1)
-    assert r["capture_frac_s5"] == pytest.approx(point_source_capture_fraction(1.02, 1.1))
-    assert r["capture_frac_d"] == pytest.approx(point_source_capture_fraction(1.51, 1.1))
+    assert r["capture_frac_s5"] == pytest.approx(
+        point_source_capture_fraction(1.02, 1.1, psf="moffat"))
+    assert r["capture_frac_d"] == pytest.approx(
+        point_source_capture_fraction(1.51, 1.1, psf="moffat"))
 
 
 def test_smaller_fiber_captures_less_extended_flux():
@@ -169,16 +175,17 @@ def test_desi_equivalent_mag_is_exact_inversion(m, hlr):
 
 
 def test_spec5_gain_is_not_the_source_poisson_shift():
-    # In the sky-limited r-arm the true equivalent-magnitude gain is smaller
-    # than the m - 5 log10(SNR ratio) shortcut implies.
+    # In the sky-limited r-arm SNR scales with flux, so the true
+    # equivalent-magnitude gain is about half the m - 5 log10(SNR ratio)
+    # shortcut, which assumes source-Poisson noise.
     m = 22.0
     r = compute_bgs_snr(m, 1, 180.0)
     shortcut = 5.0 * np.log10(r["snr_r_s5"] / r["snr_r_d"])
     exact = m - _desi_equivalent_mag(np.atleast_1d(r["snr_r_s5"]), np.array([1.5]), 1.0)[0]
-    assert 0.0 < exact < shortcut - 0.3
+    assert 0.0 < exact < 0.7 * shortcut
 
 
-@pytest.mark.parametrize("fwhm, expected", [(0.8, 0.690), (1.1, 0.807), (1.4, 0.878)])
+@pytest.mark.parametrize("fwhm, expected", [(0.8, 0.720), (1.1, 0.812), (1.4, 0.873)])
 def test_aperture_penalty_is_relative_to_point_source(fwhm, expected):
     # hlr=1.5", n=1: PSF-aware penalty is well above the intrinsic ratio of
     # 0.54, because the throughput tables already hold point-source losses.
@@ -203,27 +210,36 @@ def test_success_non_increasing_in_seeing(hlr):
     assert np.max(p[0] - p[-1]) > 0.01
 
 
-@pytest.mark.parametrize("fiber", [1.02, 1.144, 1.51])
+@pytest.mark.parametrize("fiber, table", [(1.02, _SPEC5_TABLE_SEEING_FWHM),
+                                          (1.144, _SPEC5_TABLE_SEEING_FWHM),
+                                          (1.51, _DESI_TABLE_SEEING_FWHM)])
 @pytest.mark.parametrize("seeing", [0.8, 1.5])
-def test_point_source_scales_with_capture_at_observing_seeing(fiber, seeing):
-    ratio = _fiber_source_scale(0.0, fiber, 1.0, seeing) / \
-        _fiber_source_scale(0.0, fiber, 1.0, _TABLE_SEEING_FWHM)
-    expected = point_source_capture_fraction(fiber, seeing) / \
-        point_source_capture_fraction(fiber, _TABLE_SEEING_FWHM)
+def test_point_source_scales_with_capture_at_observing_seeing(fiber, table, seeing):
+    ratio = _fiber_source_scale(0.0, fiber, 1.0, seeing, table) / \
+        _fiber_source_scale(0.0, fiber, 1.0, table, table)
+    expected = point_source_capture_fraction(fiber, seeing, psf="moffat") / \
+        point_source_capture_fraction(fiber, table, psf="moffat")
     assert ratio == pytest.approx(expected)
 
 
-def test_compact_source_has_no_relative_aperture_penalty():
+def test_compact_source_scales_by_each_table_psf():
+    # A point source in nominal 1.1" seeing: DESI's table is at 1.1", so it is
+    # unscaled apart from the FIBERFLUX convention; Spec-S5's table is at 0.96",
+    # so it loses the extra light that 1.1" seeing pushes out of its fiber.
     r = compute_bgs_snr(19.5, 1, 180.0, half_light_radius=0.0)
-    assert r["source_scale_s5"] == pytest.approx(r["source_scale_d"])
-    # FIBERFLUX of a point source is fainter than its total mag by C(PSF_LS, 1.5")
-    assert r["source_scale_d"] == pytest.approx(1.0 / point_source_capture_fraction(1.5, 1.0))
+    fiberflux = point_source_capture_fraction(1.5, 1.0)
+    assert r["source_scale_d"] == pytest.approx(1.0 / fiberflux)
+    s5_seeing_loss = (point_source_capture_fraction(1.02, 1.1, psf="moffat")
+                      / point_source_capture_fraction(1.02, 0.96, psf="moffat"))
+    assert r["source_scale_s5"] == pytest.approx(s5_seeing_loss / fiberflux)
+    assert 0.8 < s5_seeing_loss < 0.85
 
 
 def test_desi_fiberflux_not_charged_a_second_fiber_loss():
     # At the FIBERFLUX reference seeing and (nearly) its fiber, the galaxy's
     # shape cancels: the fiber magnitude already encodes its aperture loss.
-    scales = [_fiber_source_scale(h, 1.51, 1.0, 1.0, table_seeing_fwhm=1.0)
+    # Uses the FIBERFLUX convention's Gaussian PSF so the two captures match.
+    scales = [_fiber_source_scale(h, 1.51, 1.0, 1.0, 1.0, psf="gaussian")
               for h in [1.0, 1.5, 4.0]]
     assert scales == pytest.approx([1.0 / point_source_capture_fraction(1.51, 1.0)] * 3, rel=0.015)
 
@@ -271,3 +287,63 @@ def test_nan_magnitude_propagates():
 def test_bad_fiber_diameter_raises_value_error():
     with pytest.raises(ValueError):
         compute_bgs_snr(19.5, 1, 180.0, fiber_diameter=100)
+
+
+# Moffat seeing model, checked against the throughput budget and Monte Carlo.
+
+def test_moffat_point_capture_matches_budget():
+    # SS5-0022 "Lateral offset throughput est": zero-offset star signal 0.4256
+    # for beta = 3.5, 0.96" FWHM, 107 µm = 1.0218" fiber.
+    assert point_source_capture_fraction(1.0218, 0.96, psf="moffat") == \
+        pytest.approx(0.4256, rel=1e-3)
+
+
+def test_moffat_galaxy_capture_matches_budget():
+    # Same tab: 0.35" Sersic galaxy, 0.86" FWHM, zero offset gives 0.3428.
+    # Reproduced for an exponential profile (n = 1).
+    assert seeing_capture_fraction(0.35, 1.0218, 0.86, sersic_n=1.0, psf="moffat") == \
+        pytest.approx(0.3428, rel=2e-3)
+
+
+def test_ring_kernel_reproduces_gaussian_rice_kernel():
+    from scipy.stats import ncx2
+    fiber_radius, fwhm = 0.51, 1.1
+    sigma = fwhm * _FWHM_TO_SIGMA
+    r = np.array([0.05, 0.3, 0.51, 0.8, 1.5, 3.0])
+    exact = ncx2.cdf((fiber_radius / sigma) ** 2, 2, (r / sigma) ** 2)
+    np.testing.assert_allclose(_ring_kernel(r, fiber_radius, fwhm, "gaussian", 3.5),
+                               exact, atol=5e-4)
+
+
+@pytest.mark.parametrize("hlr, fiber, fwhm", [(0.5, 1.02, 0.96), (1.5, 1.02, 1.1),
+                                              (1.5, 1.51, 1.1), (3.0, 1.51, 0.8)])
+def test_moffat_galaxy_capture_matches_monte_carlo(hlr, fiber, fwhm):
+    rng = np.random.default_rng(12345)
+    n_samp, beta = 1_000_000, 3.5
+    # Exponential disk: enclosed light follows Gamma(2), with b_1 = 1.678.
+    from scipy.special import gammaincinv
+    r_gal = hlr * rng.gamma(2.0, 1.0, n_samp) / gammaincinv(2.0, 0.5)
+    # Moffat radial offsets by inverting its enclosed-light fraction.
+    alpha = _moffat_alpha(fwhm, beta)
+    r_psf = alpha * np.sqrt(rng.uniform(size=n_samp) ** (1.0 / (1.0 - beta)) - 1.0)
+    th1, th2 = rng.uniform(0.0, 2.0 * np.pi, (2, n_samp))
+    x = r_gal * np.cos(th1) + r_psf * np.cos(th2)
+    y = r_gal * np.sin(th1) + r_psf * np.sin(th2)
+    mc = np.mean(x ** 2 + y ** 2 < (fiber / 2.0) ** 2)
+    got = seeing_capture_fraction(hlr, fiber, fwhm, psf="moffat")
+    assert got == pytest.approx(mc, abs=1.5e-3)
+
+
+def test_moffat_capture_limits():
+    assert seeing_capture_fraction(1e-3, 1.02, 1.1, psf="moffat") == pytest.approx(
+        point_source_capture_fraction(1.02, 1.1, psf="moffat"), abs=5e-4)
+    assert seeing_capture_fraction(1.5, 1.51, 0.01, psf="moffat") == pytest.approx(
+        fiber_capture_fraction(1.5, 1.51), abs=1e-3)
+    # Moffat wings put less light in a fiber than a Gaussian of the same FWHM.
+    assert point_source_capture_fraction(1.51, 1.1, psf="moffat") < \
+        point_source_capture_fraction(1.51, 1.1)
+
+
+def test_unknown_psf_raises():
+    with pytest.raises(ValueError):
+        seeing_capture_fraction(1.5, 1.51, 1.1, psf="airy")
