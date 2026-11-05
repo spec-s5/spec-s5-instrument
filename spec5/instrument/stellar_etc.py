@@ -32,7 +32,9 @@ _DESI_FIBER_ANGULAR_DIAMETER = 1.51
 # Throughput and sky tables
 # ---------------------------------------------------------------------------
 # Source: Spec-S5 Systems Engineering Throughput Budget, SS5-0022 v1.1
-# (2026-11-05), "Comparison to DESI" tab, rounded to 4 decimals. Throughputs
+# (2026-11-05), "Comparison to DESI" tab, rounded to 4 decimals. The
+# full-precision budget values are in tests/data/ss5-0022_v1.1_*.csv, and
+# tests/test_throughput_tables.py checks these tables against them. Throughputs
 # run from above the atmosphere to detected photons, and include atmospheric
 # transmission and telescope obscuration. Use the full mirror area with them.
 #
