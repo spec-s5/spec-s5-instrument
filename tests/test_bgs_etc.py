@@ -31,11 +31,11 @@ MAGS = [17.5, 19.5, 20.5, 21.5]
 
 # Expected values evaluated at nexp=1, texp=180.0, half_light_radius=1.5,
 # fiber_diameter=107 (baseline Spec-S5 design).
-EXPECTED_SNR_R_S5 = {17.5: 21.621522, 19.5: 7.247700, 20.5: 3.706574, 21.5: 1.712364}
+EXPECTED_SNR_R_S5 = {17.5: 22.469989, 19.5: 7.603293, 20.5: 3.919652, 21.5: 1.824044}
 EXPECTED_SNR_R_D  = {17.5: 18.494695, 19.5: 6.052377, 20.5: 3.036061, 21.5: 1.381136}
 
 EXPECTED_P_DESI  = {17.5: 0.989070, 19.5: 0.986045, 20.5: 0.986045, 21.5: 0.950944}
-EXPECTED_P_SPEC5 = {17.5: 0.989070, 19.5: 0.986045, 20.5: 0.986045, 21.5: 0.975612}
+EXPECTED_P_SPEC5 = {17.5: 0.989070, 19.5: 0.986045, 20.5: 0.986045, 21.5: 0.980413}
 
 
 @pytest.mark.parametrize("m", MAGS)
@@ -222,17 +222,34 @@ def test_point_source_scales_with_capture_at_observing_seeing(fiber, table, seei
     assert ratio == pytest.approx(expected)
 
 
-def test_compact_source_scales_by_each_table_psf():
-    # A point source in nominal 1.1" seeing: DESI's table is at 1.1", so it is
-    # unscaled apart from the FIBERFLUX convention; Spec-S5's table is at 0.96",
-    # so it loses the extra light that 1.1" seeing pushes out of its fiber.
+def test_compact_source_defaults_to_each_table_psf():
+    # By default each instrument is observed at its own table's seeing (0.96"
+    # for Spec-S5, 1.1" for DESI), so a point source is unscaled apart from
+    # the FIBERFLUX convention.
     r = compute_bgs_snr(19.5, 1, 180.0, half_light_radius=0.0)
     fiberflux = point_source_capture_fraction(1.5, 1.0)
+    assert r["seeing_fwhm"] == _SPEC5_TABLE_SEEING_FWHM
+    assert r["desi_seeing_fwhm"] == _DESI_TABLE_SEEING_FWHM
+    assert r["source_scale_s5"] == pytest.approx(1.0 / fiberflux)
     assert r["source_scale_d"] == pytest.approx(1.0 / fiberflux)
+
+
+def test_compact_source_in_desi_nominal_seeing():
+    # In 1.1" seeing Spec-S5 loses the extra light pushed out of its 1.02"
+    # fiber relative to its 0.96" table.
+    r = compute_bgs_snr(19.5, 1, 180.0, half_light_radius=0.0, seeing_fwhm=1.1)
+    fiberflux = point_source_capture_fraction(1.5, 1.0)
     s5_seeing_loss = (point_source_capture_fraction(1.02, 1.1, psf="moffat")
                       / point_source_capture_fraction(1.02, 0.96, psf="moffat"))
     assert r["source_scale_s5"] == pytest.approx(s5_seeing_loss / fiberflux)
     assert 0.8 < s5_seeing_loss < 0.85
+
+
+def test_desi_seeing_option_leaves_spec5_alone():
+    a = compute_bgs_snr(20.5, 1, 180.0)
+    b = compute_bgs_snr(20.5, 1, 180.0, desi_seeing_fwhm=1.4)
+    assert b["snr_r_s5"] == pytest.approx(a["snr_r_s5"])
+    assert b["snr_r_d"] < a["snr_r_d"]
 
 
 def test_desi_fiberflux_not_charged_a_second_fiber_loss():

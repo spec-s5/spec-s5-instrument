@@ -200,29 +200,42 @@ r-arm SNR Spec-S5 achieves, then evaluates the curve at m′:
   - **Spec-S5:** Moffat 0.96″ FWHM (g-band atmospheric seeing) in the 107 µm
     (1.02″) fiber, with 9 µm mirror blur. Telescope blur and fiber offsets are
     separate fixed losses in the budget, so 0.96″ is atmospheric seeing only.
-    The budget has no 120 µm curve; the code scales the 107 µm curve by the
-    previous tables' 120/107 ratio (1.13).
+    The budget has no 120 µm star curve; the code scales the 107 µm curve by
+    the budget's 120/107 point-source fiber-capture ratio at 0.96″ and the
+    budgeted lateral errors (1.154–1.156, "Lateral offset throughput est" tab).
   - **DESI:** DESI-347-v17 at Moffat 1.1″ FWHM, given in the budget as the DESI
     galaxy curve × 1.24.
 
-  `seeing_fwhm` is therefore atmospheric Moffat FWHM in the same sense. At the
-  nominal 1.1″, Spec-S5 is observed in worse seeing than its 0.96″ table, and a
-  point source loses ~17% of its table flux from the 1.02″ fiber.
+- **Seeing.** `seeing_fwhm` is atmospheric Moffat FWHM in the same sense as the
+  budgets. By default each instrument is observed at its own table's seeing:
+  Spec-S5 at 0.96″ (`seeing_fwhm`) and DESI at 1.1″ (`desi_seeing_fwhm` in
+  `compute_bgs_snr`). The DESI reference for redshift success is always 1.1″,
+  where the DR1 curve was calibrated. This matches the stellar ETC and the
+  budget's own Spec-S5/DESI comparison, which pair the same two tables.
+
+  Both numbers describe the Mayall site: 0.96″ is the g-band median
+  atmospheric seeing derived from DESI's measurements (r band: 0.86″), and
+  1.1″ is DESI's nominal design condition. The default comparison therefore
+  gives Spec-S5 better seeing than DESI, which is worth 0.21 mag of the
+  point-source gain below and 0.08 mag at hlr = 1.5″. Pass `seeing_fwhm=1.1`
+  to compare at equal seeing; a Spec-S5 point source then loses ~17% of its
+  table flux from the 1.02″ fiber.
 
 Depth gain m − m′ at r_fiber = 21.5, 1×180 s, n = 1 (DESI at its nominal
 reference; changing r_fiber to 22 alters these by < 0.01 mag):
 
 | Spec-S5 seeing | point-like (0.01″) | hlr 1.0″ | hlr 1.5″ | hlr 3.0″ |
 |---|---|---|---|---|
-| 1.1″ (nominal) | 0.49 mag | 0.30 mag | 0.26 mag | 0.23 mag |
-| 0.96″ | 0.70 mag | 0.40 mag | 0.34 mag | 0.27 mag |
+| 0.96″ (default) | 0.70 mag | 0.40 mag | 0.34 mag | 0.27 mag |
+| 1.1″ (same as DESI) | 0.49 mag | 0.30 mag | 0.26 mag | 0.23 mag |
 
-Before the SS5-0022 v1.1 update the nominal hlr = 1.5″ gain was quoted as
-0.72 mag. Using the DESI star curve instead of the galaxy curve (DESI was
-understated by 1.24×) took it to 0.47 mag, and the Moffat PSF with per-table
-seeing to 0.26 mag. Most of the remaining gap to the 2.5× collecting-area
-ratio comes from Spec-S5's smaller fiber in arcseconds (1.02″ vs 1.51″), which
-captures less light at 1.1″ seeing.
+Before the SS5-0022 v1.1 update the hlr = 1.5″ gain was quoted as 0.72 mag,
+with both instruments at a 1.1″ Gaussian PSF. Using the DESI star curve
+instead of the galaxy curve (DESI was understated by 1.24×) took it to
+0.47 mag, and the Moffat PSF with per-table seeing to 0.34 mag at the
+default seeing. Most of the remaining gap to the 2.5× collecting-area ratio
+comes from Spec-S5's smaller fiber in arcseconds (1.02″ vs 1.51″), which
+captures less light.
 
 Known limitations:
 

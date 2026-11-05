@@ -129,19 +129,21 @@ fit (without that restriction) is misleadingly non-monotonic. Only the
 For extended sources, only part of the galaxy's light falls within the fiber.
 This is modeled with a Sersic profile convolved with Moffat seeing (beta = 3.5,
 `spec5.instrument.galaxy_photometry.seeing_capture_fraction`), by default an
-exponential disk (`sersic_n=1.0`) in 1.1" seeing, and is applied relative to a
-point source because the throughput tables already include point-source fiber
-losses. The tables come from the Spec-S5 Systems Engineering Throughput Budget,
-SS5-0022 v1.1, which assumes 0.96" seeing for Spec-S5 and 1.1" for DESI. Predicting Spec-S5's redshift-success probability (`instrument='spec5'`)
-finds the magnitude at which DESI, at its reference 1x180 s effective exposure in
+exponential disk (`sersic_n=1.0`), and is applied relative to a point source
+because the throughput tables already include point-source fiber losses. The
+tables come from the Spec-S5 Systems Engineering Throughput Budget, SS5-0022
+v1.1, which assumes 0.96" seeing for Spec-S5 and 1.1" for DESI; each instrument
+is observed at its table's seeing by default. Predicting Spec-S5's
+redshift-success probability (`instrument='spec5'`) finds the magnitude at which DESI, at its reference 1x180 s effective exposure in
 nominal conditions, reaches the SNR Spec-S5 achieves, then evaluates the
 DESI-calibrated curve there. `seeing_fwhm` and `sky_scale` set Spec-S5's observing
 conditions; by default the tabulated moonless-continuum sky applies, so `texp` is
 an effective exposure under that sky. Radii below 1" raise a warning because they
 fall outside the calibration sample, and magnitudes past the `r_fiber < 22.9`
-sample limit return 0. At nominal 1.1" seeing and 1x180 s, Spec-S5 reaches about
-0.26 mag deeper than DESI for a 1.5" exponential disk and 0.49 mag for a point
-source; see `docs/bgs_path_b_results.md`.
+sample limit return 0. At 1x180 s with the default seeing, Spec-S5 reaches about
+0.34 mag deeper than DESI for a 1.5" exponential disk and 0.70 mag for a point
+source (0.26 and 0.49 mag if Spec-S5 also has DESI's 1.1"); see
+`docs/bgs_path_b_results.md`.
 
 Mock observations (drawing a per-galaxy Bernoulli success outcome) are
 available via `observe_bgs_with_spec5` / `observe_bgs_with_desi` in
