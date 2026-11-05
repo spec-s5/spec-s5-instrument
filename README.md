@@ -141,10 +141,11 @@ DESI-calibrated curve there. `seeing_fwhm` and `sky_scale` set Spec-S5's observi
 conditions; by default the tabulated moonless-continuum sky applies, so `texp` is
 an effective exposure under that sky. Radii below 1" raise a warning because they
 fall outside the calibration sample, and magnitudes past the `r_fiber < 22.9`
-sample limit return 0. At 1x180 s with the default seeing, Spec-S5 reaches about
-0.34 mag deeper than DESI for a 1.5" exponential disk and 0.70 mag for a point
-source (0.26 and 0.49 mag if Spec-S5 also has DESI's 1.1"); see
-`docs/bgs_path_b_results.md`.
+sample limit return 0. At 1x180 s with both instruments in the same seeing,
+Spec-S5 reaches about 0.27 mag deeper than DESI for a 1.5" exponential disk and
+0.55 mag for a point source (0.26 and 0.49 mag at 1.1"). Setting the default
+Spec-S5 prediction (0.96") against the DESI curve (1.1" effective time) gives
+0.34 and 0.70 mag instead; see `docs/bgs_path_b_results.md`.
 
 Mock observations (drawing a per-galaxy Bernoulli success outcome) are
 available via `observe_bgs_with_spec5` / `observe_bgs_with_desi` in

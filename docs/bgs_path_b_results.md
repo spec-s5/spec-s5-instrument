@@ -225,32 +225,49 @@ r-arm SNR Spec-S5 achieves, then evaluates the curve at m′:
   measured at the Mayall with its guide cameras, with DESI's optical
   aberrations and the camera pixelization removed (SS5-0022 "DESI Seeing"
   tab). 1.1″ is DESI's nominal design value. Neither budget models a
-  different dome or primary mirror for Spec-S5. The default comparison
-  therefore gives Spec-S5 better seeing than DESI, worth 0.21 mag of the
-  point-source gain below and 0.08 mag at hlr = 1.5″. Pass `seeing_fwhm=1.1`
-  to compare at equal seeing; a Spec-S5 point source then loses ~17% of its
-  table flux from the 1.02″ fiber.
+  different dome or primary mirror for Spec-S5. DESI itself usually observes
+  in better seeing than 1.1″ (median about 1.05″ including its optics).
+
+  Holding the DESI reference at 1.1″ is correct for the calibration: DESI's
+  ETC stops each exposure once it reaches 180 s of effective time at nominal
+  conditions, so in good seeing DESI simply exposes for less time, and the DR1
+  curve describes DESI at 180 s effective time whatever the actual seeing.
+  Spec-S5's `texp`, by contrast, is real time in the seeing given by
+  `seeing_fwhm`. Spec-S5's predicted success at 0.96″ is therefore correct,
+  but comparing it with the DESI curve pits Spec-S5 in median seeing against
+  DESI in nominal seeing. A fair "gain over DESI" puts both instruments in the
+  same seeing (table below).
 
   The two values are also quoted at different wavelengths: 0.96″ is a g-band
   value (the budget's r-band median is 0.86″), while DESI's 1.1″ is defined at
   6355 Å. Seeing improves toward the red, so in the r-arm the default slightly
   understates Spec-S5's seeing, which is conservative.
 
-Depth gain m − m′ at r_fiber = 21.5, 1×180 s, n = 1 (DESI at its nominal
-reference; changing r_fiber to 22 alters these by < 0.01 mag):
+Spec-S5 depth gain over DESI at r_fiber = 21.5, 1×180 s, n = 1 (changing
+r_fiber to 22 alters these by < 0.01 mag). The first two rows compare the
+instruments in the same seeing; the last is what the default settings give
+when Spec-S5's prediction is set against the DESI curve:
 
-| Spec-S5 seeing | point-like (0.01″) | hlr 1.0″ | hlr 1.5″ | hlr 3.0″ |
+| Seeing | point-like (0.01″) | hlr 1.0″ | hlr 1.5″ | hlr 3.0″ |
 |---|---|---|---|---|
-| 0.96″ (default) | 0.70 mag | 0.40 mag | 0.34 mag | 0.27 mag |
-| 1.1″ (same as DESI) | 0.49 mag | 0.30 mag | 0.26 mag | 0.23 mag |
+| Both 0.96″ (median) | 0.55 mag | 0.31 mag | 0.27 mag | 0.23 mag |
+| Both 1.1″ (nominal) | 0.49 mag | 0.29 mag | 0.26 mag | 0.23 mag |
+| Spec-S5 0.96″ vs DESI curve (1.1″) | 0.70 mag | 0.40 mag | 0.34 mag | 0.27 mag |
+
+The like-for-like gain is therefore about 0.26–0.27 mag at hlr = 1.5″ and
+0.49–0.55 mag for a point source, whether conditions are median or nominal.
+The last row is higher by DESI's own improvement in 0.96″ seeing (0.15 mag for
+a point source, 0.07 mag at hlr = 1.5″). Good seeing helps Spec-S5 a little
+more than DESI because its fiber is smaller in arcseconds. "Both 0.96″" is
+computed by translating DESI at 0.96″ onto the curve the same way as Spec-S5
+(`compute_bgs_snr(..., desi_seeing_fwhm=0.96)` with `_desi_equivalent_mag`).
 
 Before the SS5-0022 v1.1 update the hlr = 1.5″ gain was quoted as 0.72 mag,
 with both instruments at a 1.1″ Gaussian PSF. Using the DESI star curve
 instead of the galaxy curve (DESI was understated by 1.24×) took it to
-0.47 mag, and the Moffat PSF with per-table seeing to 0.34 mag at the
-default seeing. Most of the remaining gap to the 2.5× collecting-area ratio
-comes from Spec-S5's smaller fiber in arcseconds (1.02″ vs 1.51″), which
-captures less light.
+0.47 mag, and the Moffat PSF to 0.26 mag at equal 1.1″ seeing. Most of the
+remaining gap to the 2.5× collecting-area ratio comes from Spec-S5's smaller
+fiber in arcseconds (1.02″ vs 1.51″), which captures less light.
 
 Known limitations:
 
