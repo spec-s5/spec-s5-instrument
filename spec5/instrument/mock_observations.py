@@ -15,7 +15,7 @@ import astropy.coordinates as coord
 import astropy.units as u
 from astropy.coordinates import CartesianDifferential, CartesianRepresentation
 
-from .bgs_etc import compute_redshift_success
+from .bgs_etc import SPEC5_TABLE_SEEING_FWHM, compute_redshift_success
 from .stellar_etc import compute_measurement_errors
 
 # ---------------------------------------------------------------------------
@@ -555,7 +555,7 @@ def _observe_bgs(galaxies, instrument, bgs_type, nexp, texp, sersic_n, seed,
 
 def observe_bgs_with_spec5(galaxies, bgs_type='bright', nexp=1, texp=180.0,
                             fiber_diameter=107, sersic_n=1.0, seed=None,
-                            seeing_fwhm=1.1, sky_scale=1.0):
+                            seeing_fwhm=SPEC5_TABLE_SEEING_FWHM, sky_scale=1.0):
     """
     Generate mock Spec-S5 BGS redshift-recovery outcomes.
 
@@ -587,7 +587,8 @@ def observe_bgs_with_spec5(galaxies, bgs_type='bright', nexp=1, texp=180.0,
         Random seed for reproducibility (default: None).
     seeing_fwhm, sky_scale : float
         Observing conditions; see :func:`spec5.instrument.bgs_etc.compute_bgs_snr`
-        (default: 1.1" seeing, tabulated dark sky).
+        (default: 0.96" seeing, as assumed by the Spec-S5 throughput table,
+        and the tabulated moonless-continuum sky).
 
     Returns
     -------

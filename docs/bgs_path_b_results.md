@@ -183,48 +183,96 @@ r-arm SNR Spec-S5 achieves, then evaluates the curve at m′:
   change with the Spec-S5 `texp`/`nexp`.
 - **Exact inversion.** m′ solves SNR_DESI(m′) = SNR_S5(m), including sky and
   read noise. The r-arm is sky-limited at these magnitudes, so
-  `m - 5 log10(ratio)` would overstate the gain (by ~0.6 mag at r_fiber = 22).
+  `m - 5 log10(ratio)` would overstate the gain (about twofold, ~0.2 mag at
+  r_fiber = 22).
 - **Fiber losses.** The throughput tables already contain point-source fiber
   losses, and `FIBERFLUX_R` already excludes light outside a 1.5″ fiber in 1″
   seeing. Source photons are therefore scaled by
   `C(gal⊗PSF_obs, D) / C(PSF_table, D) / C(gal⊗PSF_LS, 1.5″)`, for each
-  instrument's fiber diameter D. `PSF_table` is the seeing assumed for the
-  throughput tables and stays fixed, so worse observing seeing lowers source
-  photons for galaxies and point sources alike.
+  instrument's fiber diameter D. `PSF_obs` and `PSF_table` are Moffat profiles
+  (β = 3.5), as in the throughput budgets; `PSF_LS` is the Gaussian of the
+  FIBERFLUX definition. `PSF_table` is fixed for each instrument (below), so
+  worse observing seeing lowers source photons for galaxies and point sources
+  alike.
+- **Throughput tables.** From the Spec-S5 Systems Engineering Throughput
+  Budget, SS5-0022 v1.1, "Comparison to DESI" tab. Both source tables are
+  point-source ("star") curves:
+  - **Spec-S5:** Moffat 0.96″ FWHM in the 107 µm (1.02″) fiber, with 9 µm
+    mirror blur. Telescope blur and fiber offsets are separate fixed losses in
+    the budget.
+    The budget has no 120 µm star curve; the code scales the 107 µm curve by
+    the budget's 120/107 point-source fiber-capture ratio at 0.96″ and the
+    budgeted lateral errors (1.154–1.156, "Lateral offset throughput est" tab).
+  - **DESI:** DESI-347-v17 at Moffat 1.1″ FWHM, given in the budget as the DESI
+    galaxy curve × 1.24.
 
-The result is m′ − m ≈ −0.72 to −0.76 mag at the default hlr = 1.5″, 107 µm.
-This is probably about 0.23 mag too large; see the throughput-table item under
-"Known limitations".
+- **Seeing.** `seeing_fwhm` and `desi_seeing_fwhm` are the FWHM of a Moffat
+  (β = 3.5) seeing profile before each instrument's own optics, whose blur and
+  fiber-offset losses the throughput tables already apply as fixed factors.
+  This is the convention of both budgets: DESI's simulator, specsim, calls its
+  1.1″ "atmospheric seeing" and adds DESI's blur and offsets from DESI-347
+  separately, and SS5-0022 does the same for Spec-S5. The two parameters
+  therefore mean the same thing, and the same night gives both the same value.
+
+  By default each instrument is observed at its own table's seeing: Spec-S5
+  at 0.96″ (`seeing_fwhm`) and DESI at 1.1″ (`desi_seeing_fwhm` in
+  `compute_bgs_snr`). The DESI reference for redshift success is always 1.1″,
+  where the DR1 curve was calibrated. This matches the stellar ETC and the
+  budget's own Spec-S5/DESI comparison, which pair the same two tables.
+
+  The two values are different assumptions about conditions at the same site,
+  not different telescopes. 0.96″ is the g-band median of the seeing DESI
+  measured at the Mayall with its guide cameras, with DESI's optical
+  aberrations and the camera pixelization removed (SS5-0022 "DESI Seeing"
+  tab). 1.1″ is DESI's nominal design value. Neither budget models a
+  different dome or primary mirror for Spec-S5. The default comparison
+  therefore gives Spec-S5 better seeing than DESI, worth 0.21 mag of the
+  point-source gain below and 0.08 mag at hlr = 1.5″. Pass `seeing_fwhm=1.1`
+  to compare at equal seeing; a Spec-S5 point source then loses ~17% of its
+  table flux from the 1.02″ fiber.
+
+  The two values are also quoted at different wavelengths: 0.96″ is a g-band
+  value (the budget's r-band median is 0.86″), while DESI's 1.1″ is defined at
+  6355 Å. Seeing improves toward the red, so in the r-arm the default slightly
+  understates Spec-S5's seeing, which is conservative.
+
+Depth gain m − m′ at r_fiber = 21.5, 1×180 s, n = 1 (DESI at its nominal
+reference; changing r_fiber to 22 alters these by < 0.01 mag):
+
+| Spec-S5 seeing | point-like (0.01″) | hlr 1.0″ | hlr 1.5″ | hlr 3.0″ |
+|---|---|---|---|---|
+| 0.96″ (default) | 0.70 mag | 0.40 mag | 0.34 mag | 0.27 mag |
+| 1.1″ (same as DESI) | 0.49 mag | 0.30 mag | 0.26 mag | 0.23 mag |
+
+Before the SS5-0022 v1.1 update the hlr = 1.5″ gain was quoted as 0.72 mag,
+with both instruments at a 1.1″ Gaussian PSF. Using the DESI star curve
+instead of the galaxy curve (DESI was understated by 1.24×) took it to
+0.47 mag, and the Moffat PSF with per-table seeing to 0.34 mag at the
+default seeing. Most of the remaining gap to the 2.5× collecting-area ratio
+comes from Spec-S5's smaller fiber in arcseconds (1.02″ vs 1.51″), which
+captures less light.
 
 Known limitations:
 
-- **Throughput tables (known issue, fix planned for a follow-up PR).** The
-  tables come from the Spec-S5 Systems Engineering Throughput Budget, SS5-0022
-  v1 (P. Jelinsky, 2025):
-  - **`thru_s5`:** a point-source throughput for a Moffat PSF (β = 3.5,
-    0.96″ FWHM, g band) in the 1.02″ fiber. The 0.96″ is atmospheric seeing
-    only; telescope blur and fiber offsets are separate terms.
-  - **`thru_d`:** the budget's DESI *galaxy* curve, not a point-source one. The
-    budget's DESI star curve is the galaxy curve × 1.24.
-
-  The code treats `thru_d` as point-source, so DESI is understated and the
-  quoted depth gains are probably about 0.23 mag too high. At hlr = 1.5″ that
-  means roughly 0.49 mag instead of 0.72 mag; this is a sky-limited scaling
-  estimate, not a rerun. `_TABLE_SEEING_FWHM` stays at 1.1″ as a Gaussian
-  stand-in for the table PSF. A Gaussian would need about 1.19″ to match the
-  table's Spec-S5 fiber acceptance of 0.40, and 0.96″ would make it worse
-  (0.54). A Moffat model is the proper fix.
+- **Throughput-table approximations.** The budget's seeing is achromatic
+  (g-band 0.96″ at every wavelength for Spec-S5), and its instrument blur and
+  fiber-offset losses are computed for a point source but applied to galaxies
+  too. The seeing correction C(PSF_obs)/C(PSF_table) likewise assumes a
+  centred fiber with no blur, so its dependence on seeing is slightly off.
+  The DESI star curve is a fixed 1.24× scaling of the galaxy curve.
 - **Faint plateau under translation.** The curve's ~0.4 plateau is unlikely to
   be SNR-driven, but the translation shifts it in magnitude anyway. At the
-  default settings it extends to about r_fiber = 23.6 for Spec-S5, where it steps
-  to 0.
-- **Sky level.** The tabulated sky is the moonless-continuum model in SS5-0022
-  v1, cited there to Hanuschik (2003, A&A 407, 1157), a sky atlas from the VLT
+  default settings (hlr = 1.5″) it extends to about r_fiber = 23.23 for
+  Spec-S5, where it steps to 0.
+- **Sky level.** The tabulated sky is the moonless-continuum model in SS5-0022,
+  cited there to Hanuschik (2003, A&A 407, 1157), a sky atlas from the VLT
   at Paranal. It is not a measured KPNO dark sky. It is ~21.3 AB mag/arcsec²
   at 6500 Å, against Hahn et al.'s nominal r = 21.07. It's the same for both
-  instruments, so `texp` means an effective exposure under that sky. For real exposures under brighter
-  sky, use `sky_scale`, which scales the sky grey and has no moon-sky spectral
-  shape.
+  instruments, so `texp` means an effective exposure under that sky. For real
+  exposures under brighter sky, use `sky_scale`, which scales the sky grey and
+  has no moon-sky spectral shape. Both the budget and the code apply
+  atmospheric transmission to this sky; whether the Hanuschik spectrum already
+  includes extinction is unconfirmed.
 - **Single SNR metric.** The translation uses continuum SNR only, with no
   allowance for emission-line success.
 
