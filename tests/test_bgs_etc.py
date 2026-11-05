@@ -227,7 +227,7 @@ def test_compact_source_defaults_to_each_table_psf():
     # for Spec-S5, 1.1" for DESI), so a point source is unscaled apart from
     # the FIBERFLUX convention.
     r = compute_bgs_snr(19.5, 1, 180.0, half_light_radius=0.0)
-    fiberflux = point_source_capture_fraction(1.5, 1.0)
+    fiberflux = point_source_capture_fraction(1.5, 1.0, psf="gaussian")
     assert r["seeing_fwhm"] == SPEC5_TABLE_SEEING_FWHM
     assert r["desi_seeing_fwhm"] == DESI_TABLE_SEEING_FWHM
     assert r["source_scale_s5"] == pytest.approx(1.0 / fiberflux)
@@ -238,7 +238,7 @@ def test_compact_source_in_desi_nominal_seeing():
     # In 1.1" seeing Spec-S5 loses the extra light pushed out of its 1.02"
     # fiber relative to its 0.96" table.
     r = compute_bgs_snr(19.5, 1, 180.0, half_light_radius=0.0, seeing_fwhm=1.1)
-    fiberflux = point_source_capture_fraction(1.5, 1.0)
+    fiberflux = point_source_capture_fraction(1.5, 1.0, psf="gaussian")
     s5_seeing_loss = (point_source_capture_fraction(1.02, 1.1, psf="moffat")
                       / point_source_capture_fraction(1.02, 0.96, psf="moffat"))
     assert r["source_scale_s5"] == pytest.approx(s5_seeing_loss / fiberflux)
@@ -258,14 +258,15 @@ def test_desi_fiberflux_not_charged_a_second_fiber_loss():
     # Uses the FIBERFLUX convention's Gaussian PSF so the two captures match.
     scales = [_fiber_source_scale(h, 1.51, 1.0, 1.0, 1.0, psf="gaussian")
               for h in [1.0, 1.5, 4.0]]
-    assert scales == pytest.approx([1.0 / point_source_capture_fraction(1.51, 1.0)] * 3, rel=0.015)
+    assert scales == pytest.approx(
+        [1.0 / point_source_capture_fraction(1.51, 1.0, psf="gaussian")] * 3, rel=0.015)
 
 
 def test_seeing_capture_limits():
     # Compact galaxy -> PSF; much better seeing than the galaxy -> intrinsic profile
-    assert seeing_capture_fraction(1e-3, 1.5, 1.0) == pytest.approx(
-        point_source_capture_fraction(1.5, 1.0), abs=1e-4)
-    assert seeing_capture_fraction(1.5, 1.51, 0.01) == pytest.approx(
+    assert seeing_capture_fraction(1e-3, 1.5, 1.0, psf="gaussian") == pytest.approx(
+        point_source_capture_fraction(1.5, 1.0, psf="gaussian"), abs=1e-4)
+    assert seeing_capture_fraction(1.5, 1.51, 0.01, psf="gaussian") == pytest.approx(
         fiber_capture_fraction(1.5, 1.51), abs=1e-3)
     with pytest.raises(ValueError):
         seeing_capture_fraction(1.5, 1.51, 0.0)
@@ -358,9 +359,17 @@ def test_moffat_capture_limits():
         fiber_capture_fraction(1.5, 1.51), abs=1e-3)
     # Moffat wings put less light in a fiber than a Gaussian of the same FWHM.
     assert point_source_capture_fraction(1.51, 1.1, psf="moffat") < \
-        point_source_capture_fraction(1.51, 1.1)
+        point_source_capture_fraction(1.51, 1.1, psf="gaussian")
 
 
 def test_unknown_psf_raises():
     with pytest.raises(ValueError):
         seeing_capture_fraction(1.5, 1.51, 1.1, psf="airy")
+
+
+def test_public_capture_functions_default_to_moffat():
+    # The package's PSF model is Moffat; direct callers get it by default.
+    assert point_source_capture_fraction(1.02, 0.96) == \
+        point_source_capture_fraction(1.02, 0.96, psf="moffat")
+    assert seeing_capture_fraction(1.5, 1.02, 0.96) == \
+        seeing_capture_fraction(1.5, 1.02, 0.96, psf="moffat")

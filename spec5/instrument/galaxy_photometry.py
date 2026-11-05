@@ -91,13 +91,14 @@ def fiber_capture_fraction(half_light_radius, fiber_diameter, sersic_n=1.0):
     return float(frac) if frac.ndim == 0 else frac
 
 
-def point_source_capture_fraction(fiber_diameter, seeing_fwhm, psf="gaussian",
+def point_source_capture_fraction(fiber_diameter, seeing_fwhm, psf="moffat",
                                   beta=MOFFAT_BETA):
     """
     Fraction of a point source's flux within a centred circular fiber.
 
     ``fiber_diameter`` and ``seeing_fwhm`` are in arcsec. ``psf`` is
-    ``'gaussian'`` (default) or ``'moffat'`` with index ``beta``.
+    ``'moffat'`` (default, with index ``beta``, as in the DESI and Spec-S5
+    throughput budgets) or ``'gaussian'``.
     """
     _check_psf(psf)
     return _psf_enclosed(0.5 * fiber_diameter, seeing_fwhm, psf, beta)
@@ -129,7 +130,7 @@ def _ring_kernel(r, fiber_radius, seeing_fwhm, psf, beta):
 
 
 @lru_cache(maxsize=64)
-def _seeing_capture_table(fiber_diameter, seeing_fwhm, sersic_n, psf="gaussian",
+def _seeing_capture_table(fiber_diameter, seeing_fwhm, sersic_n, psf="moffat",
                           beta=MOFFAT_BETA):
     """Capture fraction tabulated against log10(half-light radius)."""
     fiber_radius = 0.5 * fiber_diameter
@@ -166,7 +167,7 @@ def _seeing_capture_table(fiber_diameter, seeing_fwhm, sersic_n, psf="gaussian",
 
 
 def seeing_capture_fraction(half_light_radius, fiber_diameter, seeing_fwhm,
-                            sersic_n=1.0, psf="gaussian", beta=MOFFAT_BETA):
+                            sersic_n=1.0, psf="moffat", beta=MOFFAT_BETA):
     """
     Fraction of a Sersic galaxy's total flux within a centred circular fiber
     after convolution with seeing.
@@ -182,8 +183,10 @@ def seeing_capture_fraction(half_light_radius, fiber_diameter, seeing_fwhm,
         FWHM of the PSF, arcsec. Must be positive.
     sersic_n : float
         Sersic index of the light profile (default: 1.0).
-    psf : {'gaussian', 'moffat'}
-        PSF shape (default: 'gaussian').
+    psf : {'moffat', 'gaussian'}
+        PSF shape (default: 'moffat', as in the DESI and Spec-S5 throughput
+        budgets). Use 'gaussian' for conventions defined with Gaussian
+        seeing, such as the Legacy Surveys FIBERFLUX.
     beta : float
         Moffat index, used only for ``psf='moffat'`` (default: 3.5).
 
