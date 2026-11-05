@@ -46,17 +46,25 @@ _DESI_REF_NEXP = 1
 _DESI_REF_TEXP = 180.0         # s
 _NOMINAL_SEEING_FWHM = 1.1     # arcsec
 
-# Seeing PSF. The DESI and Spec-S5 throughput budgets (DESI-347, SS5-0022)
-# model atmospheric seeing as a Moffat profile with beta = 3.5, and treat
-# instrument blur and fiber offsets as separate fixed losses. Seeing FWHMs in
-# this module are that atmospheric Moffat FWHM.
+# Seeing PSF. The throughput budgets (DESI-347, SS5-0022) model seeing as a
+# Moffat profile with beta = 3.5. Seeing FWHMs in this module are the FWHM of
+# that Moffat at the focal plane, before the losses each throughput table
+# already applies as fixed factors (instrument blur, fiber lateral offsets).
 _PSF = "moffat"
 
 # Moffat FWHM behind the point-source fiber loss built into each throughput
-# table (SS5-0022 v1.1; see stellar_etc). Spec-S5 uses 0.96", the g-band
-# median atmospheric seeing derived from DESI; DESI-347-v17 uses 1.1".
-_SPEC5_TABLE_SEEING_FWHM = 0.96   # arcsec
-_DESI_TABLE_SEEING_FWHM = 1.1     # arcsec
+# table (see stellar_etc and docs/bgs_path_b_results.md, "Seeing"). Both
+# budgets use the same convention: seeing before the instrument's own optics,
+# whose blur they charge separately. The two values differ in which
+# conditions they assume, not in what they include:
+# - Spec-S5, 0.96": SS5-0022 v1.1, the g-band median of the seeing DESI
+#   measured at the Mayall with its guide cameras, after removing DESI's
+#   optical aberrations and the camera pixelization ("DESI Seeing" tab).
+# - DESI, 1.1": DESI-347-v17's nominal design value, which DESI's simulator
+#   specsim calls atmospheric seeing (FWHM at 6355 A, scaling as
+#   lambda^-0.2), with DESI's blur and offsets added separately.
+SPEC5_TABLE_SEEING_FWHM = 0.96   # arcsec
+DESI_TABLE_SEEING_FWHM = 1.1     # arcsec
 
 # Calibration validity limits: the r_fiber < 22.9 survey cut (Hahn et al. 2023
 # Eq. 2) and the SHAPE_R > 1" cut applied to the calibration sample.
@@ -93,14 +101,15 @@ def _fiber_source_scale(half_light_radius, fiber_angular_diameter, sersic_n, see
     capture_psf = point_source_capture_fraction(fiber_angular_diameter, table_seeing_fwhm,
                                                 psf=psf)
     capture_fiberflux = seeing_capture_fraction(half_light_radius, _FIBERFLUX_DIAMETER,
-                                                _FIBERFLUX_SEEING_FWHM, sersic_n=sersic_n)
+                                                _FIBERFLUX_SEEING_FWHM, sersic_n=sersic_n,
+                                                psf="gaussian")
     return capture / capture_psf / capture_fiberflux
 
 
 def compute_bgs_snr(r_fiber_mag, nexp, texp, fiber_diameter=107,
                      half_light_radius=1.5, sersic_n=1.0,
-                     seeing_fwhm=_SPEC5_TABLE_SEEING_FWHM, sky_scale=1.0,
-                     desi_seeing_fwhm=_DESI_TABLE_SEEING_FWHM):
+                     seeing_fwhm=SPEC5_TABLE_SEEING_FWHM, sky_scale=1.0,
+                     desi_seeing_fwhm=DESI_TABLE_SEEING_FWHM):
     """
     Compute Spec-S5 and DESI r-arm continuum SNR for a BGS galaxy.
 
@@ -123,10 +132,13 @@ def compute_bgs_snr(r_fiber_mag, nexp, texp, fiber_diameter=107,
         Sersic index of the assumed light profile (default: 1.0, exponential
         disk).
     seeing_fwhm : float
-        Spec-S5 atmospheric seeing FWHM during the observation, arcsec, for a
-        Moffat PSF with beta = 3.5 as in the throughput budgets (default:
-        0.96", the seeing assumed by the Spec-S5 throughput table, SS5-0022).
-        Sets the fiber capture relative to the table's own PSF, so worse
+        Spec-S5 seeing FWHM during the observation, arcsec: a Moffat PSF with
+        beta = 3.5 at the focal plane, before Spec-S5's own blur and fiber
+        offset losses, which its throughput table already includes (default:
+        0.96", the value assumed by that table, SS5-0022: the median seeing
+        DESI measured at the Mayall, without DESI's optics). It has the same
+        meaning as ``desi_seeing_fwhm``, so the same night gives both the same
+        value. Sets the fiber capture relative to the table's own PSF, so worse
         seeing lowers source photons for galaxies and point sources alike.
     sky_scale : float
         Multiplier on the tabulated sky (default: 1.0). The table is a
@@ -137,9 +149,9 @@ def compute_bgs_snr(r_fiber_mag, nexp, texp, fiber_diameter=107,
         exposure under brighter sky, e.g. ``10**(0.4 * (21.3 - mu_r))`` for
         a sky of ``mu_r`` mag/arcsec² (this scales the spectrum grey).
     desi_seeing_fwhm : float
-        DESI atmospheric seeing FWHM, arcsec, defined as for ``seeing_fwhm``
-        (default: 1.1", DESI's nominal conditions and the seeing assumed by
-        the DESI throughput table, DESI-347-v17).
+        DESI seeing FWHM, arcsec, defined as for ``seeing_fwhm`` (default:
+        1.1", DESI's nominal design value and the one assumed by the DESI
+        throughput table, DESI-347-v17).
 
     Returns
     -------
@@ -167,9 +179,9 @@ def compute_bgs_snr(r_fiber_mag, nexp, texp, fiber_diameter=107,
     capture_d  = seeing_capture_fraction(hlr, df_d,  desi_seeing_fwhm, sersic_n=sersic_n,
                                          psf=_PSF)
     source_scale_s5 = _fiber_source_scale(hlr, df_s5, sersic_n, seeing_fwhm,
-                                          _SPEC5_TABLE_SEEING_FWHM)
+                                          SPEC5_TABLE_SEEING_FWHM)
     source_scale_d  = _fiber_source_scale(hlr, df_d,  sersic_n, desi_seeing_fwhm,
-                                          _DESI_TABLE_SEEING_FWHM)
+                                          DESI_TABLE_SEEING_FWHM)
 
     core = _photon_counting_core(m, nexp, texp, fiber_diameter=fiber_diameter,
                                   source_scale_s5=source_scale_s5,
@@ -259,14 +271,14 @@ def _desi_equivalent_mag(snr_r, half_light_radius, sersic_n):
     with np.errstate(divide="ignore"):
         point_source_mag = np.interp(np.log10(snr_r), log_snr, mags)
     scale = _fiber_source_scale(half_light_radius, _DESI_FIBER_ANGULAR_DIAMETER,
-                                sersic_n, _NOMINAL_SEEING_FWHM, _DESI_TABLE_SEEING_FWHM)
+                                sersic_n, _NOMINAL_SEEING_FWHM, DESI_TABLE_SEEING_FWHM)
     return point_source_mag + 2.5 * np.log10(scale)
 
 
 def compute_redshift_success(r_fiber_mag, instrument="spec5", bgs_type="bright",
                               nexp=1, texp=180.0, fiber_diameter=107,
                               half_light_radius=1.5, sersic_n=1.0,
-                              seeing_fwhm=_SPEC5_TABLE_SEEING_FWHM, sky_scale=1.0):
+                              seeing_fwhm=SPEC5_TABLE_SEEING_FWHM, sky_scale=1.0):
     """
     Predict the probability of a successful DESI/Spec-S5 redshift
     measurement for a BGS galaxy, using the Hahn et al. 2023 criteria that
@@ -302,9 +314,10 @@ def compute_redshift_success(r_fiber_mag, instrument="spec5", bgs_type="bright",
         raise a warning: the calibration sample has SHAPE_R > 1".
     seeing_fwhm, sky_scale : float
         Spec-S5 observing conditions, used only for ``instrument='spec5'``;
-        see ``compute_bgs_snr`` (default: 0.96" seeing, as assumed by the
-        Spec-S5 throughput table). The DESI reference stays at its nominal
-        1.1", because the calibration curve was measured there.
+        see ``compute_bgs_snr`` for what ``seeing_fwhm`` includes (default:
+        0.96", as assumed by the Spec-S5 throughput table). The DESI reference
+        stays at its nominal 1.1", because the calibration curve was measured
+        there.
 
     Returns
     -------

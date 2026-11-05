@@ -9,9 +9,9 @@ import pytest
 from scipy.optimize import brentq
 
 from spec5.instrument.bgs_etc import (
-    _DESI_TABLE_SEEING_FWHM,
+    DESI_TABLE_SEEING_FWHM,
     _R_FIBER_SAMPLE_LIMIT,
-    _SPEC5_TABLE_SEEING_FWHM,
+    SPEC5_TABLE_SEEING_FWHM,
     _desi_equivalent_mag,
     _fiber_source_scale,
     _load_success_curve,
@@ -210,9 +210,9 @@ def test_success_non_increasing_in_seeing(hlr):
     assert np.max(p[0] - p[-1]) > 0.01
 
 
-@pytest.mark.parametrize("fiber, table", [(1.02, _SPEC5_TABLE_SEEING_FWHM),
-                                          (1.144, _SPEC5_TABLE_SEEING_FWHM),
-                                          (1.51, _DESI_TABLE_SEEING_FWHM)])
+@pytest.mark.parametrize("fiber, table", [(1.02, SPEC5_TABLE_SEEING_FWHM),
+                                          (1.144, SPEC5_TABLE_SEEING_FWHM),
+                                          (1.51, DESI_TABLE_SEEING_FWHM)])
 @pytest.mark.parametrize("seeing", [0.8, 1.5])
 def test_point_source_scales_with_capture_at_observing_seeing(fiber, table, seeing):
     ratio = _fiber_source_scale(0.0, fiber, 1.0, seeing, table) / \
@@ -228,8 +228,8 @@ def test_compact_source_defaults_to_each_table_psf():
     # the FIBERFLUX convention.
     r = compute_bgs_snr(19.5, 1, 180.0, half_light_radius=0.0)
     fiberflux = point_source_capture_fraction(1.5, 1.0)
-    assert r["seeing_fwhm"] == _SPEC5_TABLE_SEEING_FWHM
-    assert r["desi_seeing_fwhm"] == _DESI_TABLE_SEEING_FWHM
+    assert r["seeing_fwhm"] == SPEC5_TABLE_SEEING_FWHM
+    assert r["desi_seeing_fwhm"] == DESI_TABLE_SEEING_FWHM
     assert r["source_scale_s5"] == pytest.approx(1.0 / fiberflux)
     assert r["source_scale_d"] == pytest.approx(1.0 / fiberflux)
 

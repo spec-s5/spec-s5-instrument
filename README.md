@@ -132,8 +132,9 @@ This is modeled with a Sersic profile convolved with Moffat seeing (beta = 3.5,
 exponential disk (`sersic_n=1.0`), and is applied relative to a point source
 because the throughput tables already include point-source fiber losses. The
 tables come from the Spec-S5 Systems Engineering Throughput Budget, SS5-0022
-v1.1, which assumes 0.96" seeing for Spec-S5 and 1.1" for DESI; each instrument
-is observed at its table's seeing by default. Predicting Spec-S5's
+v1.1, which assumes 0.96" seeing for Spec-S5 (the median DESI measured at the
+Mayall) and 1.1" for DESI (DESI's nominal design value); each instrument is
+observed at its table's seeing by default. Predicting Spec-S5's
 redshift-success probability (`instrument='spec5'`) finds the magnitude at which DESI, at its reference 1x180 s effective exposure in
 nominal conditions, reaches the SNR Spec-S5 achieves, then evaluates the
 DESI-calibrated curve there. `seeing_fwhm` and `sky_scale` set Spec-S5's observing

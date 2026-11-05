@@ -38,12 +38,16 @@ _DESI_FIBER_ANGULAR_DIAMETER = 1.51
 #
 # - Source curves ("star") include the fiber loss for a point source in a
 #   Moffat PSF (beta = 3.5), plus instrument blur and lateral-offset losses:
-#     * Spec-S5: 0.96" FWHM (g-band atmospheric seeing), 107 µm fiber,
-#       9 µm mirror blur ("ESTIMATED overall throughput" row 17).
-#     * DESI: DESI-347-v17 estimates at 1.1" FWHM. The budget gives the DESI
-#       star curve as its galaxy curve x 1.24.
-#   The PSF FWHMs are mirrored in bgs_etc (_SPEC5_TABLE_SEEING_FWHM,
-#   _DESI_TABLE_SEEING_FWHM).
+#     * Spec-S5: 0.96" FWHM, 107 µm fiber, 9 µm mirror blur ("ESTIMATED
+#       overall throughput" row 17). 0.96" is the g-band median seeing DESI
+#       measured at the Mayall with DESI's optical aberrations removed.
+#     * DESI: DESI-347-v17 estimates at 1.1" FWHM, DESI's nominal design
+#       seeing. The budget gives the DESI star curve as its galaxy curve
+#       x 1.24.
+#   Both are seeing before the instrument's own optics, whose blur each
+#   budget charges separately.
+#   The PSF FWHMs are mirrored in bgs_etc (SPEC5_TABLE_SEEING_FWHM,
+#   DESI_TABLE_SEEING_FWHM), which documents the conventions.
 # - Sky curves have no fiber loss (row 19 for Spec-S5).
 _THRU_WAVELENGTH = np.array([360., 375., 400., 450., 500., 550.,
                              600., 650., 700., 750., 800., 850., 900., 980.]) * 10.0  # Å
