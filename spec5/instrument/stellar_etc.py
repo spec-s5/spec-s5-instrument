@@ -51,11 +51,14 @@ _THRU_WAVELENGTH = np.array([360., 375., 400., 450., 500., 550.,
 _SPEC5_THRU = {
     107: np.array([0.0365, 0.0516, 0.0725, 0.1099, 0.1067, 0.0994, 0.1145,
                    0.1224, 0.1212, 0.1115, 0.1340, 0.1350, 0.1358, 0.0876]),
-    # The budget has no 120 µm curve. This is the 107 µm curve scaled at each
-    # node by the 120/107 ratio of the previous tables (1.130-1.133, from
-    # notebooks/SpecS5_SNR_ETC.ipynb), whose origin is undocumented.
-    120: np.array([0.0413, 0.0584, 0.0820, 0.1243, 0.1206, 0.1123, 0.1295,
-                   0.1385, 0.1371, 0.1262, 0.1516, 0.1529, 0.1537, 0.0991]),
+    # The budget has no 120 µm star curve. This is the 107 µm curve times the
+    # ratio of the 120 and 107 µm point-source fiber captures ("Lateral offset
+    # throughput est" tab, 0.96" Moffat), at each node's budgeted lateral error
+    # ("Throughput" row 76): 1.154-1.156. Blur losses, tabulated only for
+    # 107 µm, are assumed equal. The result matches the original 120 µm table
+    # in notebooks/SpecS5_SNR_ETC.ipynb to within 0.0001.
+    120: np.array([0.0422, 0.0596, 0.0837, 0.1269, 0.1231, 0.1147, 0.1321,
+                   0.1414, 0.1400, 0.1288, 0.1548, 0.1560, 0.1569, 0.1012]),
 }
 _SPEC5_THRU_SKY = np.array([0.0959, 0.1343, 0.1871, 0.2813, 0.2716, 0.2529, 0.2920,
                             0.3133, 0.3109, 0.2865, 0.3444, 0.3471, 0.3497, 0.2261])

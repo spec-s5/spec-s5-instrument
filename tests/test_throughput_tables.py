@@ -67,8 +67,9 @@ def test_desi_source_curve_is_the_star_curve():
                                1.24, rtol=RTOL)
 
 
-def test_120um_curve_is_107um_curve_times_legacy_ratio():
-    # The budget has no 120 µm curve; it is the 107 µm curve scaled by the
-    # previous tables' 120/107 ratio, which was 1.130-1.133 at every node.
+def test_120um_curve_follows_budget_fiber_capture_ratio():
+    # The budget has no 120 µm star curve; it is the 107 µm curve times the
+    # budget's 120/107 point-source capture ratio at 0.96" (1.154-1.156 at the
+    # budgeted lateral errors). 4-decimal rounding adds up to ~0.3% scatter.
     ratio = _SPEC5_THRU[120] / _SPEC5_THRU[107]
-    assert np.all((ratio > 1.126) & (ratio < 1.137))
+    assert np.all((ratio > 1.150) & (ratio < 1.160))
