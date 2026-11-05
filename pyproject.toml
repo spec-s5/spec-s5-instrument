@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "spec-s5-instrument"
-version = "0.1.0"
+version = "0.2.0"
 description = "Exposure Time Calculator for the Spec-S5 spectroscopic survey instrument"
 requires-python = ">=3.9"
 dependencies = [
