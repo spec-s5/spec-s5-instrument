@@ -155,6 +155,25 @@ available via `observe_bgs_with_spec5` / `observe_bgs_with_desi` in
 See `docs/bgs_plan.md` for the full research/implementation plan and
 `research/bgs_path_b/` for the calibration scripts and derived data.
 
+## Mock fiber assignment
+
+`mock_fiber_assign` selects a spatially uniform, density-limited subsample of
+a catalog within a circular field of view. Positions `x, y` are in arcmin
+relative to the field centre.
+
+```python
+from spec5.instrument import mock_fiber_assign
+
+observed = mock_fiber_assign(catalog, n_fibers=13000, fov_radius_arcmin=33.0,
+                             priority_column='zmag', seed=0)
+```
+
+The fibers are spread over a grid in proportion to each cell's area inside the
+field. Each cell keeps up to its allocation of objects, chosen by priority
+within the cell. Fibers left over in sparse cells are not moved elsewhere, so a
+clustered catalog returns fewer targets than fibers. Fiber collisions and
+patrol radii are not modelled. See `notebooks/mock_fiberassign_demo.ipynb`.
+
 ## Running the tests
 
 ```bash
