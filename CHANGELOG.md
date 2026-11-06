@@ -25,9 +25,11 @@ Default outputs change substantially in this release.
 - **BGS seeing defaults:** Spec-S5 defaults to 0.96" seeing in
   `compute_bgs_snr`, `compute_redshift_success` and `observe_bgs_with_spec5`.
   DESI stays at 1.1".
-- **BGS depth gain** at r_fiber = 21.5, 180 s, for a 1.5" exponential disk:
-  0.72 → 0.34 mag (0.26 mag with Spec-S5 also at 1.1"). For a point source:
-  0.96 → 0.70 mag (0.49 mag).
+- **BGS depth gain** at r_fiber = 21.5, 180 s, with both instruments in the
+  same seeing: 0.72 → 0.27 mag for a 1.5" exponential disk (0.26 mag at 1.1")
+  and 0.96 → 0.55 mag for a point source (0.49 mag). The default Spec-S5
+  prediction at 0.96" set against the DESI curve, which is at 1.1", gives 0.34
+  and 0.70 mag.
 - **Capture functions:** `point_source_capture_fraction` and
   `seeing_capture_fraction` default to `psf="moffat"`. Pass `psf="gaussian"`
   for the previous behaviour.
