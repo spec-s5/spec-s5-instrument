@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **Mock fiber assignment:** `mock_fiber_assign` in `spec5.instrument.fiber`
+  selects a spatially uniform, density-limited subsample of a catalog within a
+  circular field of view, with optional priority within each grid cell
+  (PR #2).
+
 ## 0.2.0 (unreleased)
 
 Default outputs change substantially in this release.
